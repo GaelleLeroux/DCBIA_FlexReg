@@ -5,6 +5,7 @@ from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from Method.orientation import orientation
 from Method.util import vtkMeanTeeth, ToothNoExist
 from Method.propagation import Dilation
+import subprocess
 
 
 
@@ -40,6 +41,11 @@ def Bezier_bled(point1,point2,point3,pas):
     return np.matmul(matrix_t,matrix_point)
 
 
+def carre(x):
+    resultat = x ** 2
+    print(f"Le carré de {x} est {resultat}")
+    print("Oui"*150)
+    return resultat
 
 
 
@@ -58,12 +64,12 @@ def butterflyPatch(surf,
         adjust_posterior_right,
         adjust_posterior_left
          ):
+    
+  
 
-
+    print("type de surf : ",type(surf))
     surf_tmp = vtk.vtkPolyData()
     surf_tmp.DeepCopy(surf)
-
-    
 
 
     radius = 0.7
@@ -101,7 +107,6 @@ def butterflyPatch(surf,
 
 
 
-
     middle = (landmark_posterior_left + landmark_anterior_right) / 2
 
 
@@ -125,11 +130,15 @@ def butterflyPatch(surf,
     
 
 
-
     #bezier droite
     bezier = Bezier_bled(landmark_posterior_right[:2],landmark_middle_posterior[:2],landmark_anterior_right[:2],0.01)
     v_bezier = bezier - np.expand_dims(landmark_posterior_right[:2],axis=0)
     v_norm_bezier = np.expand_dims(np.linalg.norm(v_bezier, axis=1),axis=0).T
+    # print(f"v_norm_bezier : {v_norm_bezier}")
+    for i in range(len(v_norm_bezier)):
+        if v_norm_bezier[i] == 0:
+            v_norm_bezier[i] += 0.01
+
     v_bezier = v_bezier / v_norm_bezier
 
     v = np.expand_dims(landmark_anterior_right[:2] - landmark_posterior_right[:2], axis=0).T
@@ -148,11 +157,13 @@ def butterflyPatch(surf,
 
 
 
-
     #bezier gauche
     bezier2 = Bezier_bled(landmark_posterior_left[:2],landmark_middle_posterior[:2],landmark_anterior_left[:2],0.01)
     v_bezier = bezier2 - np.expand_dims(landmark_posterior_left[:2],axis=0)
     v_norm_bezier = np.expand_dims(np.linalg.norm(v_bezier, axis=1),axis=0).T
+    for i in range(len(v_norm_bezier)):
+        if v_norm_bezier[i] == 0:
+            v_norm_bezier[i] += 0.01
     v_bezier = v_bezier / v_norm_bezier
 
     v = np.expand_dims(landmark_anterior_left[:2] - landmark_posterior_left[:2], axis=0).T
@@ -193,7 +204,6 @@ def butterflyPatch(surf,
 
 
     surf.GetPointData().AddArray(V_labels_prediction)
-
 
 
     # return surf

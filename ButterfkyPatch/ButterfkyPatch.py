@@ -575,7 +575,7 @@ class WidgetParameter:
         #                                         'VTK File (*.vtk) ;; STL File (*.stl)')
         # self.lineedit.insert(path_file)
 
-        self.lineedit.insert('/home/luciacev/Desktop/MEG/T1/ExtractionT1/P1_T1_IOS_U_outOr.vtk')
+        self.lineedit.insert('/home/luciacev/Documents/Gaelle/Flex_Reg/Data_test/test_upper.vtk')
 
 
     def viewScan(self):
