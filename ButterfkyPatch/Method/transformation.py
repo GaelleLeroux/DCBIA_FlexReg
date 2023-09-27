@@ -53,3 +53,16 @@ def RotateTransform(surf, transform):
     transformFilter.SetInputData(surf)
     transformFilter.Update()
     return transformFilter.GetOutput()
+
+
+def ApplyTransform(input, transform):
+    if isinstance(input, vtk.vtkPolyData):
+        input = TransformSurf(input, transform)
+
+    if isinstance(input, dict):
+        input = TransformDict(input, transform)
+
+    if isinstance(input, (list, np.ndarray)):
+        input = TransformList(input, transform)
+
+    return input

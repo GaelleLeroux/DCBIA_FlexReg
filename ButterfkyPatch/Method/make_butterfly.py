@@ -67,7 +67,6 @@ def butterflyPatch(surf,
     
   
 
-    print("type de surf : ",type(surf))
     surf_tmp = vtk.vtkPolyData()
     surf_tmp.DeepCopy(surf)
 

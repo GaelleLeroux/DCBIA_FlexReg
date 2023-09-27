@@ -24,7 +24,7 @@ from qt import (QGridLayout,
 
 
 from Method.make_butterfly import butterflyPatch
-from Method import ComputeNormals, drawPatch
+from Method import ComputeNormals, drawPatch,vtkMeshTeeth,vtkICP,ICP,WriteSurf
 #
 # ButterfkyPatch
 #
@@ -169,13 +169,19 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def manageNumberWidgetScan(self,number):
         print(f'manage number widget scan, number : {number}')
+        for i in  self.list_widget_scan:
+            if i.getName()=="WidgetGo":
+                self.removeWidgetScan()
+
         while self.number_widget_scan != number :
             if number >= self.number_widget_scan :
-                self.addWidgetScan()
+                self.addWidgetScan(self.number_widget_scan+1)
                 self.number_widget_scan += 1
             elif number <= self.number_widget_scan :
                 self.removeWidgetScan()
                 self.number_widget_scan -= 1
+
+        self.list_widget_scan.append(WidgetGo(self.ui.verticalLayout_2,self.parent,self.list_widget_scan[0],self.list_widget_scan[1]))
 
 
     def removeWidgetScan(self):
@@ -183,8 +189,10 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         mainwidgetscan.deleteLater()
         mainwidgetscan = None
 
-    def addWidgetScan(self):
-        self.list_widget_scan.append(WidgetParameter(self.ui.verticalLayout_2,self.parent))
+        
+
+    def addWidgetScan(self,title:int):
+        self.list_widget_scan.append(WidgetParameter(self.ui.verticalLayout_2,self.parent,title))
 
 
 
@@ -439,11 +447,10 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
 
 
-
-
-
-class WidgetParameter:
-    def __init__(self,layout,parent) -> None:
+class WidgetGo:
+    def __init__(self,layout,parent,T1,T2) -> None:
+        self.T1 = T1
+        self.T2 = T2
         self.parent_layout = layout
         self.parent = parent
         self.surf = None
@@ -456,7 +463,57 @@ class WidgetParameter:
 
         self.layout_file = QHBoxLayout()
         layout.addLayout(self.layout_file)
-        self.label_1 = QLabel('Scan T1')
+        self.label_1 = QLabel(f'Test')
+        self.button_select_scan = QPushButton("Let's go")
+        self.button_select_scan.pressed.connect(self.oui)
+        self.layout_file.addWidget(self.button_select_scan)
+
+    def oui(self):
+        methode = [vtkICP()]
+        option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
+        icp = ICP(methode, option=option)
+        output_icp = icp.run(self.T2.getSurf().GetPolyData(), self.T1.getSurf().GetPolyData())
+        print("on a passer le run de icp")
+        name = "ouioui.vtk"
+        WriteSurf(output_icp["source_Or"], "/home/luciacev/Documents/Gaelle/Data/Flex_Reg", name, "NON")
+        print("on a enregistrer l'output")
+        print("matrix : ",output_icp["matrix"])
+        print("type de matrice : ",type(output_icp["matrix"]))
+
+        tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+        tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(output_icp["matrix"]))
+        # tform = output_icp["matrix"]
+        model = self.T2.getSurf()
+        # surf_tmp = vtk.vtkPolyData()
+        # surf_tmp.DeepCopy(model)
+        model.SetAndObserveTransformNodeID(tform.GetID())
+        model.HardenTransform()
+        name = "ouioui.vtk"
+        slicer.util.saveNode(model, "/home/luciacev/Documents/Gaelle/Data/Flex_Reg/ouiNon.vtk")
+
+    def getMainWidget(self):
+        return self.main_widget
+    
+    def getName(self):
+        return "WidgetGo"
+
+
+class WidgetParameter:
+    def __init__(self,layout,parent,title) -> None:
+        self.parent_layout = layout
+        self.parent = parent
+        self.surf = None
+        self.title=title
+        self.main_widget = QWidget()
+        layout.addWidget(self.main_widget)
+        self.maint_layout = QVBoxLayout(self.main_widget)
+        self.setup(self.maint_layout,title)
+
+    def setup(self,layout,title):
+
+        self.layout_file = QHBoxLayout()
+        layout.addLayout(self.layout_file)
+        self.label_1 = QLabel(f'Scan T{title}')
         self.lineedit = QLineEdit()
         self.button_select_scan = QPushButton('Select')
         self.button_select_scan.pressed.connect(self.selectFile)
@@ -509,7 +566,6 @@ class WidgetParameter:
             self.lineedit_adjust_right_bot) = self.displayParamater(self.layout_right_bot,4,[14,0.33,0])
         
 
-
         #widget outline
         widget_outline = QWidget()
         self.stackedWidget.insertWidget(1,widget_outline)
@@ -545,6 +601,12 @@ class WidgetParameter:
     def getMainWidget(self):
         return self.main_widget
     
+    def getName(self):
+        return "WidgetParameter"
+    
+    def getSurf(self):
+        return self.surf
+    
     def changeMode(self,index):
         self.stackedWidget.setCurrentIndex(index)
 
@@ -574,8 +636,11 @@ class WidgetParameter:
         #                                         '/home',
         #                                         'VTK File (*.vtk) ;; STL File (*.stl)')
         # self.lineedit.insert(path_file)
-
-        self.lineedit.insert('/home/luciacev/Documents/Gaelle/Flex_Reg/Data_test/test_upper.vtk')
+        # if int(self.title)
+        if self.title==1:
+            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
+        else : 
+            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2_IOS_U_NEOrReg.vtk')
 
 
     def viewScan(self):
