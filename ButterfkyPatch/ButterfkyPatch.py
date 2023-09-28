@@ -540,54 +540,6 @@ class Reg:
         self.viewScan(self.T1.getSurf(),self.T1.getTitle())
 
 
-# OLD VERSION OF viewScan without changing color in view 3
-    # def viewScan(self,surf,title:str):
-       
-    #     # Récupérer le vtkMRMLModelDisplayNode du modèle chargé
-    #     displayNode = surf.GetDisplayNode()
-        
-    #     # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
-    #     viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-    #     viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
-        
-    #     viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
-
-    #     # Supposons que self.title est 1 pour la première fenêtre et 3 pour la troisième fenêtre
-    #     views_to_display = [title - 1, 2]  # Pour les fenêtres 1 et 3 (0-indexed)
-    #     view_ids_to_display = []
-
-    #     if len(views_to_display)!=0:
-
-    #         for i in views_to_display:
-    #             viewNode = viewNodes.GetItemAsObject(i)
-    #             view_ids_to_display.append(viewNode.GetID())
-
-    #         # Définir la visibilité de modèle pour afficher dans les vues sélectionnées
-    #         displayNode.SetViewNodeIDs(view_ids_to_display)
-
-    #         for i in views_to_display:
-    #             # Récupérer la caméra associée à la vue 3D
-    #             threeDView = slicer.app.layoutManager().threeDWidget(i).threeDView()
-    #             render_view = threeDView.renderWindow()
-    #             renderers = render_view.GetRenderers()
-    #             camera = renderers.GetFirstRenderer().GetActiveCamera()
-                
-                
-    #             # Centrer la caméra sur le modèle
-    #             bounding_box = [0, 0, 0, 0, 0, 0]
-    #             surf.GetRASBounds(bounding_box)
-    #             center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
-
-    #             size = bounding_box[1] - bounding_box[0]
-    #             distance = size*3
-    #             camera.SetFocalPoint(center)
-    #             camera.SetPosition(center[0], center[1], center[2] - distance)  # Vous pouvez ajuster la distance de la caméra par rapport au centre
-    #             camera.SetViewUp(0, 1, 0)
-    #             camera.OrthogonalizeViewUp()
-    #     else:
-    #         slicer.util.errorDisplay(f"Il n'y a pas de vue 3D disponible pour afficher le modèle à l'index {self.title - 1}.")
-
-
     def viewScan(self, surf, title: str):
         # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
