@@ -123,6 +123,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+        self.reg = Reg()
 
     def setup(self):
         """
@@ -165,7 +166,43 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.number_widget_scan = 0
         self.list_widget_scan = []
         self.manageNumberWidgetScan(2)
+        self.ui.applyButton.enabled = True
+        self.ui.buttonSelectOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
+        self.ui.applyButton.connect("clicked(bool)",self.on_apply_button_clicked)
 
+
+        customLayout = """
+<layout type="horizontal">
+  <item>
+    <view class="vtkMRMLViewNode" singletontag="1">
+      <property name="viewlabel" action="default">1</property>
+    </view>
+  </item>
+  <item>
+    <view class="vtkMRMLViewNode" singletontag="2">
+      <property name="viewlabel" action="default">2</property>
+    </view>
+  </item>
+  <item>
+    <view class="vtkMRMLViewNode" singletontag="3">
+      <property name="viewlabel" action="default">3</property>
+    </view>
+  </item>
+</layout>
+"""
+
+        customLayoutId=501
+
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
+
+        # Switch to the new custom layout
+        layoutManager.setLayout(customLayoutId)
+
+    def on_apply_button_clicked(self):
+        output_text = self.ui.lineEditOutput.text
+        suffix_text = self.ui.lineEditSuffix.text
+        self.reg.run(output_text, suffix_text)
 
     def manageNumberWidgetScan(self,number):
         print(f'manage number widget scan, number : {number}')
@@ -181,7 +218,10 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.removeWidgetScan()
                 self.number_widget_scan -= 1
 
-        self.list_widget_scan.append(WidgetGo(self.ui.verticalLayout_2,self.parent,self.list_widget_scan[0],self.list_widget_scan[1]))
+        self.reg.setT1T2(self.list_widget_scan[0],self.list_widget_scan[1])
+        
+        
+        
 
 
     def removeWidgetScan(self):
@@ -193,6 +233,27 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def addWidgetScan(self,title:int):
         self.list_widget_scan.append(WidgetParameter(self.ui.verticalLayout_2,self.parent,title))
+
+    def openFinder(self,nom : str,_) -> None : 
+        """
+         Open finder to let the user choose is files or folder
+        """ 
+
+        self.ui.lineEditOutput.setText("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/output")
+        self.ui.lineEditSuffix.setText("_REG")
+        
+        # A GARDER
+        # if nom=="Matrix":
+        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        #     self.ui.LineEditMatrix.setText(surface_folder)
+
+        # elif nom=="Patient":
+        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        #     self.ui.LineEditPatient.setText(surface_folder)
+
+        # elif nom=="Output":
+        #     surface_folder = QFileDialog.getExistingDirectory(self.parent, "Select a scan folder")
+        #     self.ui.lineEditOutput.setText(surface_folder)
 
 
 
@@ -281,20 +342,22 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingGUIFromParameterNode = True
 
         # Update node selectors and sliders
-        self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
-        self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-        self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
+        # self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
+        # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
+        # self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
 
         # Update buttons states and tooltips
-        if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-            self.ui.applyButton.toolTip = "Compute output volume"
-            self.ui.applyButton.enabled = True
-        else:
-            self.ui.applyButton.toolTip = "Select input and output volume nodes"
-            self.ui.applyButton.enabled = False
+        # if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
+        #     self.ui.applyButton.toolTip = "Compute output volume"
+        #     self.ui.applyButton.enabled = True
+        # else:
+        #     self.ui.applyButton.toolTip = "Select input and output volume nodes"
+        #     self.ui.applyButton.enabled = False
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
+
+        
 
     def updateParameterNodeFromGUI(self, caller=None, event=None):
         """
@@ -447,55 +510,142 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
 
 
-class WidgetGo:
-    def __init__(self,layout,parent,T1,T2) -> None:
+class Reg:
+    def __init__(self,T1=None,T2=None) -> None:
         self.T1 = T1
         self.T2 = T2
-        self.parent_layout = layout
-        self.parent = parent
-        self.surf = None
-        self.main_widget = QWidget()
-        layout.addWidget(self.main_widget)
-        self.maint_layout = QVBoxLayout(self.main_widget)
-        self.setup(self.maint_layout)
 
-    def setup(self,layout):
+    def run(self,output_folder:str,suffix:str):
 
-        self.layout_file = QHBoxLayout()
-        layout.addLayout(self.layout_file)
-        self.label_1 = QLabel(f'Test')
-        self.button_select_scan = QPushButton("Let's go")
-        self.button_select_scan.pressed.connect(self.oui)
-        self.layout_file.addWidget(self.button_select_scan)
 
-    def oui(self):
+        # ICP
         methode = [vtkICP()]
         option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
         icp = ICP(methode, option=option)
         output_icp = icp.run(self.T2.getSurf().GetPolyData(), self.T1.getSurf().GetPolyData())
-        print("on a passer le run de icp")
-        name = "ouioui.vtk"
-        WriteSurf(output_icp["source_Or"], "/home/luciacev/Documents/Gaelle/Data/Flex_Reg", name, "NON")
-        print("on a enregistrer l'output")
-        print("matrix : ",output_icp["matrix"])
-        print("type de matrice : ",type(output_icp["matrix"]))
-
+       
+        # Apply the matrix
         tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
         tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(output_icp["matrix"]))
-        # tform = output_icp["matrix"]
         model = self.T2.getSurf()
-        # surf_tmp = vtk.vtkPolyData()
-        # surf_tmp.DeepCopy(model)
         model.SetAndObserveTransformNodeID(tform.GetID())
         model.HardenTransform()
-        name = "ouioui.vtk"
-        slicer.util.saveNode(model, "/home/luciacev/Documents/Gaelle/Data/Flex_Reg/ouiNon.vtk")
 
-    def getMainWidget(self):
-        return self.main_widget
+        # SAVE NEW T2
+        input_T2 = self.T2.getPath()
+        outpath = input_T2.replace(os.path.dirname(input_T2),output_folder)
+        fname, extension_scan = os.path.splitext(input_T2)
+        slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
+        self.viewScan(self.T2.getSurf(),self.T2.getTitle())
+        self.viewScan(self.T1.getSurf(),self.T1.getTitle())
+
+
+# OLD VERSION OF viewScan without changing color in view 3
+    # def viewScan(self,surf,title:str):
+       
+    #     # Récupérer le vtkMRMLModelDisplayNode du modèle chargé
+    #     displayNode = surf.GetDisplayNode()
+        
+    #     # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+    #     viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+    #     viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+        
+    #     viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
+
+    #     # Supposons que self.title est 1 pour la première fenêtre et 3 pour la troisième fenêtre
+    #     views_to_display = [title - 1, 2]  # Pour les fenêtres 1 et 3 (0-indexed)
+    #     view_ids_to_display = []
+
+    #     if len(views_to_display)!=0:
+
+    #         for i in views_to_display:
+    #             viewNode = viewNodes.GetItemAsObject(i)
+    #             view_ids_to_display.append(viewNode.GetID())
+
+    #         # Définir la visibilité de modèle pour afficher dans les vues sélectionnées
+    #         displayNode.SetViewNodeIDs(view_ids_to_display)
+
+    #         for i in views_to_display:
+    #             # Récupérer la caméra associée à la vue 3D
+    #             threeDView = slicer.app.layoutManager().threeDWidget(i).threeDView()
+    #             render_view = threeDView.renderWindow()
+    #             renderers = render_view.GetRenderers()
+    #             camera = renderers.GetFirstRenderer().GetActiveCamera()
+                
+                
+    #             # Centrer la caméra sur le modèle
+    #             bounding_box = [0, 0, 0, 0, 0, 0]
+    #             surf.GetRASBounds(bounding_box)
+    #             center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
+
+    #             size = bounding_box[1] - bounding_box[0]
+    #             distance = size*3
+    #             camera.SetFocalPoint(center)
+    #             camera.SetPosition(center[0], center[1], center[2] - distance)  # Vous pouvez ajuster la distance de la caméra par rapport au centre
+    #             camera.SetViewUp(0, 1, 0)
+    #             camera.OrthogonalizeViewUp()
+    #     else:
+    #         slicer.util.errorDisplay(f"Il n'y a pas de vue 3D disponible pour afficher le modèle à l'index {self.title - 1}.")
+
+
+    def viewScan(self, surf, title: str):
+        # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+        
+        if viewNodes.GetNumberOfItems() < 3:
+            slicer.util.errorDisplay(f"Il n'y a pas suffisamment de vues 3D disponibles pour afficher le modèle.")
+            return
+        
+        # Original Display Node
+        originalDisplayNode = surf.GetDisplayNode()
+        originalDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(title - 1).GetID()])  # Afficher dans la vue title - 1
+        
+        # Créer une copie du modèle original pour la vue 2
+        copied_model = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
+        copied_model.SetAndObservePolyData(surf.GetPolyData())
+        copied_model.SetName(str(title) + "_copy")
+        
+        colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
+        # Créer un nouveau Display Node pour la copie, avec une couleur verte
+        colorDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        colorDisplayNode.SetColor(colors[title-1])  # Vert
+        colorDisplayNode.Visibility2DOff()
+        colorDisplayNode.Visibility3DOn()
+        slicer.mrmlScene.AddNode(colorDisplayNode)
+        copied_model.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
+        colorDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(2).GetID()])  # Afficher dans la vue 2
+
+        # Parcourir les vues pour centrer la caméra
+        for i in [title - 1, 2]:
+            # Récupérer la caméra associée à la vue 3D
+            threeDView = slicer.app.layoutManager().threeDWidget(i).threeDView()
+            render_view = threeDView.renderWindow()
+            renderers = render_view.GetRenderers()
+            camera = renderers.GetFirstRenderer().GetActiveCamera()
+            
+            # Centrer la caméra sur le modèle
+            bounding_box = [0, 0, 0, 0, 0, 0]
+            surf.GetRASBounds(bounding_box)
+            center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
+
+            size = bounding_box[1] - bounding_box[0]
+            distance = size * 3
+            camera.SetFocalPoint(center)
+            camera.SetPosition(center[0], center[1], center[2] - distance)
+            camera.SetViewUp(0, 1, 0)
+            camera.OrthogonalizeViewUp()
+
+
+
     
     def getName(self):
-        return "WidgetGo"
+        return "Reg"
+    
+    def setT1T2(self,T1,T2):
+        self.T1 = T1
+        self.T2 = T2
+
 
 
 class WidgetParameter:
@@ -610,6 +760,12 @@ class WidgetParameter:
     def changeMode(self,index):
         self.stackedWidget.setCurrentIndex(index)
 
+    def getPath(self):
+        return self.lineedit.text
+    
+    def getTitle(self):
+        return self.title
+
 
 
     def displayParamater(self,layout,number,parameter):
@@ -640,12 +796,51 @@ class WidgetParameter:
         if self.title==1:
             self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T1.vtk')
         else : 
-            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2_IOS_U_NEOrReg.vtk')
+            self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
 
 
     def viewScan(self):
         if self.surf == None :
+            # Charger le modèle
             self.surf = slicer.util.loadModel(self.lineedit.text)
+            
+            # Récupérer le vtkMRMLModelDisplayNode du modèle chargé
+            displayNode = self.surf.GetDisplayNode()
+            
+            # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+            viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+            viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+            
+            # S'assurer qu'il y a des vues 3D disponibles
+            # if viewNodes.GetNumberOfItems() > 0:
+            # Récupérer le premier vtkMRMLViewNode (supposons que c'est votre première vue 3D)
+            # Trouver le ViewNode correspondant à self.title
+            viewNode = viewNodes.GetItemAsObject(self.title - 1) if viewNodes.GetNumberOfItems() >= self.title else None
+            print(self.title - 1)
+            if viewNode:
+                # Définir la visibilité du modèle pour afficher uniquement dans la vue 3D correspondante
+                displayNode.SetViewNodeIDs([viewNode.GetID()])
+
+                # Récupérer la caméra associée à la vue 3D
+                threeDView = slicer.app.layoutManager().threeDWidget(int(self.title - 1)).threeDView()
+                render_view = threeDView.renderWindow()
+                renderers = render_view.GetRenderers()
+                camera = renderers.GetFirstRenderer().GetActiveCamera()
+                
+                
+                # Centrer la caméra sur le modèle
+                bounding_box = [0, 0, 0, 0, 0, 0]
+                self.surf.GetRASBounds(bounding_box)
+                center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
+
+                size = bounding_box[1] - bounding_box[0]
+                distance = size*3
+                camera.SetFocalPoint(center)
+                camera.SetPosition(center[0], center[1], center[2] - distance)  # Vous pouvez ajuster la distance de la caméra par rapport au centre
+                camera.SetViewUp(0, 1, 0)
+                camera.OrthogonalizeViewUp()
+            else:
+                slicer.util.errorDisplay(f"Il n'y a pas de vue 3D disponible pour afficher le modèle à l'index {self.title - 1}.")
 
 
     def processPatch(self):
