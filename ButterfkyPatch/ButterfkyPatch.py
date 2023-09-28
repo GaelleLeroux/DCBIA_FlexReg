@@ -531,6 +531,14 @@ class Reg:
         model.SetAndObserveTransformNodeID(tform.GetID())
         model.HardenTransform()
 
+        curve = self.T2.getCurve()
+        middle_point = self.T2.getMiddle()
+        if curve!=None and middle_point!=None : 
+            curve.SetAndObserveTransformNodeID(tform.GetID())
+            curve.HardenTransform()
+            middle_point.SetAndObserveTransformNodeID(tform.GetID())
+            middle_point.HardenTransform()
+
         # SAVE NEW T2
         input_T2 = self.T2.getPath()
         outpath = input_T2.replace(os.path.dirname(input_T2),output_folder)
@@ -605,6 +613,8 @@ class WidgetParameter:
         self.parent_layout = layout
         self.parent = parent
         self.surf = None
+        self.curve = None
+        self.middle_point = None
         self.title=title
         self.main_widget = QWidget()
         layout.addWidget(self.main_widget)
@@ -717,6 +727,12 @@ class WidgetParameter:
     
     def getTitle(self):
         return self.title
+    
+    def getCurve(self):
+        return self.curve
+    
+    def getMiddle(self):
+        return self.middle_point
 
 
 
@@ -820,11 +836,32 @@ class WidgetParameter:
     def loadLandamrk(self):
         # node = slicer.util.loadMarkups('/home/luciacev/Desktop/Data/ButterflyPatch/F.mrk.json')
         # node.SetCurveTypeToSpline()
+        bounding_box = [0, 0, 0, 0, 0, 0]
+        self.surf.GetRASBounds(bounding_box)
+        center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
+
         self.curve = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", 'First curve')
-        self.curve.AddControlPoint([0,10,0],'F1')
-        self.curve.AddControlPoint([0,-10,0],'F2')
-        self.curve.AddControlPoint([0,10,10],'F3')
-        self.curve.AddControlPoint([0,10,-10],'F4')
+
+        self.curve.AddControlPoint([center[0]+10,center[1]-10,center[2]-5],f'F1')
+        self.curve.AddControlPoint([center[0]+10,center[1]+10,center[2]-5],f'F2')
+        self.curve.AddControlPoint([center[0]-10,center[1]+10,center[2]-5],f'F3')
+        self.curve.AddControlPoint([center[0]-10,center[1]-10,center[2]-5],f'F4')
+        # self.curve.AddControlPoint([0,10,0],'F1')
+        # self.curve.AddControlPoint([0,-10,0],'F2')
+        # self.curve.AddControlPoint([0,10,10],'F3')
+        # self.curve.AddControlPoint([0,10,-10],'F4')
+
+        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+
+        displayNode = self.curve.GetDisplayNode()
+        if displayNode is not None:
+            displayNode.SetVisibility2D(False)
+            displayNode.SetVisibility3D(True)
+            print("je ne suis pas None")
+
+            view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+            displayNode.SetViewNodeIDs(view_ids_to_display)
 
 
         # curve.SetAndObserveSurfaceConstrainNode(self.surf)
@@ -850,8 +887,28 @@ class WidgetParameter:
 
 
     def placeMiddlePoint(self):
+        # self.middle_point = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
+        # self.middle_point.AddControlPoint([0,0,0],'F1')
+
+        bounding_box = [0, 0, 0, 0, 0, 0]
+        self.surf.GetRASBounds(bounding_box)
+        center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
+
         self.middle_point = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
-        self.middle_point.AddControlPoint([0,0,0],'F1')
+
+        self.middle_point.AddControlPoint(center,'F1')
+
+        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
+
+        displayNode = self.middle_point.GetDisplayNode()
+        if displayNode is not None:
+            displayNode.SetVisibility2D(False)
+            displayNode.SetVisibility3D(True)
+            print("je ne suis pas None")
+
+            view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
+            displayNode.SetViewNodeIDs(view_ids_to_display)
 
 
     def draw(self):
