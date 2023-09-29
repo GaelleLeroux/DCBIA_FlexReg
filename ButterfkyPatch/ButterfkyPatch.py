@@ -20,6 +20,7 @@ from qt import (QGridLayout,
                 QComboBox,
                 QPushButton,
                 QFileDialog,
+                QSpinBox,
                 QWidget)
 
 
@@ -544,11 +545,52 @@ class Reg:
         outpath = input_T2.replace(os.path.dirname(input_T2),output_folder)
         fname, extension_scan = os.path.splitext(input_T2)
         slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
-        self.viewScan(self.T2.getSurf(),self.T2.getTitle())
-        self.viewScan(self.T1.getSurf(),self.T1.getTitle())
+
+        # SAVE NEW T1
+        model = self.T1.getSurf()
+        input_T1 = self.T1.getPath()
+        outpath = input_T1.replace(os.path.dirname(input_T1),output_folder)
+        fname, extension_scan = os.path.splitext(input_T1)
+        slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
 
 
-    def viewScan(self, surf, title: str):
+        # CALCULATE MATRIX TO CENTER IN FRONT CAMERA
+        # Get data of model
+        points = self.T1.getSurf().GetPolyData().GetPoints()
+
+        # Get center of model
+        center = [0.0, 0.0, 0.0]
+        for i in range(points.GetNumberOfPoints()):
+            x, y, z = points.GetPoint(i)
+            center[0] += x
+            center[1] += y
+            center[2] += z
+
+        center[0] /= points.GetNumberOfPoints()
+        center[1] /= points.GetNumberOfPoints()
+        center[2] /= points.GetNumberOfPoints()
+
+        # Get the focal point of the camera
+        render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
+        camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+        focal_point = camera.GetFocalPoint() 
+        center[0]-=focal_point[0]
+        center[1]-=focal_point[1]
+        center[2]-=focal_point[2]
+
+
+        # Create matrix to center the vtk
+        matrix = vtk.vtkMatrix4x4()
+        matrix.Identity()  
+        matrix.SetElement(0, 3, -center[0])  
+        matrix.SetElement(1, 3, -center[1])  
+        matrix.SetElement(2, 3, -center[2])  
+
+        self.viewScan(self.T2.getSurf(),matrix,self.T2.getTitle())
+        self.viewScan(self.T1.getSurf(),matrix,self.T1.getTitle())
+
+
+    def viewScan(self, surf, matrix,title: str):
         # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
@@ -564,39 +606,24 @@ class Reg:
         # Créer une copie du modèle original pour la vue 2
         copied_model = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
         copied_model.SetAndObservePolyData(surf.GetPolyData())
-        copied_model.SetName(str(title) + "_copy")
+        copied_model.SetName("T"+str(title) + "_copy")
         
         colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
         # Créer un nouveau Display Node pour la copie, avec une couleur verte
         colorDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        colorDisplayNode.SetColor(colors[title-1])  # Vert
+        colorDisplayNode.SetColor(colors[title-1])
         colorDisplayNode.Visibility2DOff()
         colorDisplayNode.Visibility3DOn()
         slicer.mrmlScene.AddNode(colorDisplayNode)
         copied_model.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
         colorDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(2).GetID()])  # Afficher dans la vue 2
 
-        # Parcourir les vues pour centrer la caméra
-        for i in [title - 1, 2]:
-            # Récupérer la caméra associée à la vue 3D
-            threeDView = slicer.app.layoutManager().threeDWidget(i).threeDView()
-            render_view = threeDView.renderWindow()
-            renderers = render_view.GetRenderers()
-            camera = renderers.GetFirstRenderer().GetActiveCamera()
-            
-            # Centrer la caméra sur le modèle
-            bounding_box = [0, 0, 0, 0, 0, 0]
-            surf.GetRASBounds(bounding_box)
-            center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
 
-            size = bounding_box[1] - bounding_box[0]
-            distance = size * 3
-            camera.SetFocalPoint(center)
-            camera.SetPosition(center[0], center[1], center[2] - distance)
-            camera.SetViewUp(0, 1, 0)
-            camera.OrthogonalizeViewUp()
-
-
+        # # Center the model in front of the camera
+        # transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+        # transform_node.SetMatrixTransformToParent(matrix)
+        # model = copied_model
+        # model.SetAndObserveTransformNodeID(transform_node.GetID())
 
     
     def getName(self):
@@ -691,13 +718,22 @@ class WidgetParameter:
         self.button_curvepoint.pressed.connect(self.curvePoint)
         self.layout_outline.addWidget(self.button_curvepoint,1,0)  
 
+        self.add_points = QPushButton('Resample points')
+        self.add_points.pressed.connect(self.addPoints)
+        self.layout_outline.addWidget(self.add_points,2,0) 
+
+        self.spin_add_points = QSpinBox()
+        self.spin_add_points.setMinimum(4)
+        self.spin_add_points.setValue(4)
+        self.layout_outline.addWidget(self.spin_add_points,2,1) 
+
         self.button_placepoint = QPushButton('Middle point')
         self.button_placepoint.pressed.connect(self.placeMiddlePoint)
-        self.layout_outline.addWidget(self.button_placepoint,2,0)
+        self.layout_outline.addWidget(self.button_placepoint,3,0)
 
         self.button_draw = QPushButton('Draw')
         self.button_draw.pressed.connect(self.draw)
-        self.layout_outline.addWidget(self.button_draw,3,0)
+        self.layout_outline.addWidget(self.button_draw,4,0)
 
         self.layout_button_display = QGridLayout()
         layout.addLayout(self.layout_button_display)
@@ -769,46 +805,69 @@ class WidgetParameter:
 
     def viewScan(self):
         if self.surf == None :
-            # Charger le modèle
+            # Load model
             self.surf = slicer.util.loadModel(self.lineedit.text)
-            
-            # Récupérer le vtkMRMLModelDisplayNode du modèle chargé
+
+            # Get data model
             displayNode = self.surf.GetDisplayNode()
             
             # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
             viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
             viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
             
-            # S'assurer qu'il y a des vues 3D disponibles
-            # if viewNodes.GetNumberOfItems() > 0:
-            # Récupérer le premier vtkMRMLViewNode (supposons que c'est votre première vue 3D)
-            # Trouver le ViewNode correspondant à self.title
+            customLayoutId=501
+            layoutManager = slicer.app.layoutManager()
+            layoutManager.setLayout(customLayoutId)
+
             viewNode = viewNodes.GetItemAsObject(self.title - 1) if viewNodes.GetNumberOfItems() >= self.title else None
-            print(self.title - 1)
+            
             if viewNode:
-                # Définir la visibilité du modèle pour afficher uniquement dans la vue 3D correspondante
+                # Display model in windows
                 displayNode.SetViewNodeIDs([viewNode.GetID()])
 
-                # Récupérer la caméra associée à la vue 3D
-                threeDView = slicer.app.layoutManager().threeDWidget(int(self.title - 1)).threeDView()
-                render_view = threeDView.renderWindow()
-                renderers = render_view.GetRenderers()
-                camera = renderers.GetFirstRenderer().GetActiveCamera()
-                
-                
-                # Centrer la caméra sur le modèle
-                bounding_box = [0, 0, 0, 0, 0, 0]
-                self.surf.GetRASBounds(bounding_box)
-                center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
-
-                size = bounding_box[1] - bounding_box[0]
-                distance = size*3
-                camera.SetFocalPoint(center)
-                camera.SetPosition(center[0], center[1], center[2] - distance)  # Vous pouvez ajuster la distance de la caméra par rapport au centre
-                camera.SetViewUp(0, 1, 0)
-                camera.OrthogonalizeViewUp()
             else:
-                slicer.util.errorDisplay(f"Il n'y a pas de vue 3D disponible pour afficher le modèle à l'index {self.title - 1}.")
+                slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
+
+            # Get data of model
+            points = self.surf.GetPolyData().GetPoints()
+
+            # Get center of model
+            center = [0.0, 0.0, 0.0]
+            for i in range(points.GetNumberOfPoints()):
+                x, y, z = points.GetPoint(i)
+                center[0] += x
+                center[1] += y
+                center[2] += z
+
+            center[0] /= points.GetNumberOfPoints()
+            center[1] /= points.GetNumberOfPoints()
+            center[2] /= points.GetNumberOfPoints()
+
+
+            # Get the focal point of the camera
+            render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
+            camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+            focal_point = camera.GetFocalPoint() 
+            center[0]-=focal_point[0]
+            center[1]-=focal_point[1]
+            center[2]-=focal_point[2]
+
+
+            # Create matrix to center the vtk
+            matrix = vtk.vtkMatrix4x4()
+            matrix.Identity()  
+            matrix.SetElement(0, 3, -center[0])  
+            matrix.SetElement(1, 3, -center[1])  
+            matrix.SetElement(2, 3, -center[2])  
+
+            transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+            transform_node.SetMatrixTransformToParent(matrix)
+            model = self.surf
+            model.SetAndObserveTransformNodeID(transform_node.GetID())
+            model.HardenTransform()
+            
+
+
 
 
     def processPatch(self):
@@ -840,7 +899,9 @@ class WidgetParameter:
         self.surf.GetRASBounds(bounding_box)
         center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
 
-        self.curve = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", 'First curve')
+        print("center in load landmarks : ",center)
+
+        self.curve = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f'T{self.title} curve')
 
         self.curve.AddControlPoint([center[0]+10,center[1]-10,center[2]-5],f'F1')
         self.curve.AddControlPoint([center[0]+10,center[1]+10,center[2]-5],f'F2')
@@ -850,7 +911,13 @@ class WidgetParameter:
         # self.curve.AddControlPoint([0,-10,0],'F2')
         # self.curve.AddControlPoint([0,10,10],'F3')
         # self.curve.AddControlPoint([0,10,-10],'F4')
+        self.viewLandmark()
+        
 
+
+        # curve.SetAndObserveSurfaceConstrainNode(self.surf)
+
+    def viewLandmark(self):
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
 
@@ -858,13 +925,9 @@ class WidgetParameter:
         if displayNode is not None:
             displayNode.SetVisibility2D(False)
             displayNode.SetVisibility3D(True)
-            print("je ne suis pas None")
 
             view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
             displayNode.SetViewNodeIDs(view_ids_to_display)
-
-
-        # curve.SetAndObserveSurfaceConstrainNode(self.surf)
 
 
     def curvePoint(self):
@@ -884,6 +947,46 @@ class WidgetParameter:
         # markups_node = slicer.app.mrmlScene().AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
         # for i , point in enumerate(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())) :
         #     markups_node.AddControlPoint(point,f'F{i}')
+
+        
+
+    def addPoints(self):
+        # Obtenez votre noeud de courbe
+        curveNode = self.curve
+        curvePolyData = curveNode.GetCurveWorld()
+        points = curvePolyData.GetPoints()
+
+        # Créez des splines pour interpoler les points de la courbe
+        splineX = vtk.vtkCardinalSpline()
+        splineY = vtk.vtkCardinalSpline()
+        splineZ = vtk.vtkCardinalSpline()
+
+        # Ajoutez les points de la courbe aux splines
+        for i in range(points.GetNumberOfPoints()):
+            p = points.GetPoint(i)
+            splineX.AddPoint(i, p[0])
+            splineY.AddPoint(i, p[1])
+            splineZ.AddPoint(i, p[2])
+
+        # Déterminez le nombre de points souhaité
+        numberOfPoints = self.spin_add_points.value
+        newCurveNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsClosedCurveNode',f'T{self.title} curve')
+
+        # Évaluez les splines à intervalles réguliers pour obtenir le nouveau set de points
+        for i in range(numberOfPoints):
+            u = i / (numberOfPoints - 1.0) * (points.GetNumberOfPoints() - 1)
+            if i == numberOfPoints-1:
+                u = u -(points.GetNumberOfPoints() - 1)/(numberOfPoints*2)
+            x = splineX.Evaluate(u)
+            y = splineY.Evaluate(u)
+            z = splineZ.Evaluate(u)
+            newCurveNode.AddControlPoint(vtk.vtkVector3d(x, y, z))
+
+        # Si vous voulez, vous pouvez maintenant supprimer l'ancien noeud de courbe
+        self.curve = newCurveNode
+        slicer.mrmlScene.RemoveNode(curveNode)
+        self.viewLandmark()
+        self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
 
     def placeMiddlePoint(self):

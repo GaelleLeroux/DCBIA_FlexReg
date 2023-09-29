@@ -1,15 +1,16 @@
 import torch
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+import numpy as np
 
 from Method.propagation import Dilation
 
 def drawPatch(outlinePoints: list,polydata,mid):
     step = 0.2
     radius = 0.5
-    P0 = torch.tensor(outlinePoints).unsqueeze(0).cuda()
-    P1 = torch.tensor(outlinePoints[1:] + [outlinePoints[0]]).unsqueeze(0).cuda()
+    P0 = torch.tensor(np.array(outlinePoints)).unsqueeze(0).cuda()
+    P1 = torch.tensor(np.array(outlinePoints[1:] + [outlinePoints[0]])).unsqueeze(0).cuda()
 
-    T = torch.range(0,1,step).unsqueeze(0).unsqueeze(0).permute(2,1,0).cuda()
+    T = torch.arange(0,1+step,step).unsqueeze(0).unsqueeze(0).permute(2,1,0).cuda()
 
     P = (1-T)*P0 + T*P1
 
