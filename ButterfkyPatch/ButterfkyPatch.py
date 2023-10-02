@@ -525,13 +525,14 @@ class Reg:
         icp = ICP(methode, option=option)
         output_icp = icp.run(self.T2.getSurf().GetPolyData(), self.T1.getSurf().GetPolyData())
        
-        # Apply the matrix
+        # Apply the matrix to reg with T1 center in front of camera
         tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
         tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(output_icp["matrix"]))
         model = self.T2.getSurf()
         model.SetAndObserveTransformNodeID(tform.GetID())
         model.HardenTransform()
 
+        # If curve move the curve
         curve = self.T2.getCurve()
         middle_point = self.T2.getMiddle()
         if curve!=None and middle_point!=None : 
@@ -540,57 +541,40 @@ class Reg:
             middle_point.SetAndObserveTransformNodeID(tform.GetID())
             middle_point.HardenTransform()
 
+
+        # Créez une nouvelle matrice pour stocker la matrice inverse
+        inverse_matrix = vtk.vtkMatrix4x4()
+
+        # Calculate invert matrix to reg with original T1
+        inverse_matrix.DeepCopy(self.T1.getMatrix())  # Copie les éléments de 'matrix' dans 'inverse_matrix'
+        inverse_matrix.Invert()
+
+        # Apply invert matrix
+        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+        transform_node.SetMatrixTransformToParent(inverse_matrix)
+        model = self.T2.getSurf()
+        model.SetAndObserveTransformNodeID(transform_node.GetID())
+        model.HardenTransform()
+
         # SAVE NEW T2
         input_T2 = self.T2.getPath()
         outpath = input_T2.replace(os.path.dirname(input_T2),output_folder)
         fname, extension_scan = os.path.splitext(input_T2)
         slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
 
-        # SAVE NEW T1
-        model = self.T1.getSurf()
-        input_T1 = self.T1.getPath()
-        outpath = input_T1.replace(os.path.dirname(input_T1),output_folder)
-        fname, extension_scan = os.path.splitext(input_T1)
-        slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
+        # Apply matrix to center in front of camera
+        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+        transform_node.SetMatrixTransformToParent(self.T1.getMatrix())
+        model = self.T2.getSurf()
+        model.SetAndObserveTransformNodeID(transform_node.GetID())
+        model.HardenTransform()
+
+        # View scan
+        self.viewScan(self.T2.getSurf(),self.T2.getTitle())
+        self.viewScan(self.T1.getSurf(),self.T1.getTitle())
 
 
-        # CALCULATE MATRIX TO CENTER IN FRONT CAMERA
-        # Get data of model
-        points = self.T1.getSurf().GetPolyData().GetPoints()
-
-        # Get center of model
-        center = [0.0, 0.0, 0.0]
-        for i in range(points.GetNumberOfPoints()):
-            x, y, z = points.GetPoint(i)
-            center[0] += x
-            center[1] += y
-            center[2] += z
-
-        center[0] /= points.GetNumberOfPoints()
-        center[1] /= points.GetNumberOfPoints()
-        center[2] /= points.GetNumberOfPoints()
-
-        # Get the focal point of the camera
-        render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
-        camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
-        focal_point = camera.GetFocalPoint() 
-        center[0]-=focal_point[0]
-        center[1]-=focal_point[1]
-        center[2]-=focal_point[2]
-
-
-        # Create matrix to center the vtk
-        matrix = vtk.vtkMatrix4x4()
-        matrix.Identity()  
-        matrix.SetElement(0, 3, -center[0])  
-        matrix.SetElement(1, 3, -center[1])  
-        matrix.SetElement(2, 3, -center[2])  
-
-        self.viewScan(self.T2.getSurf(),matrix,self.T2.getTitle())
-        self.viewScan(self.T1.getSurf(),matrix,self.T1.getTitle())
-
-
-    def viewScan(self, surf, matrix,title: str):
+    def viewScan(self, surf,title: str):
         # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
@@ -641,7 +625,9 @@ class WidgetParameter:
         self.parent = parent
         self.surf = None
         self.curve = None
+        self.glue = False
         self.middle_point = None
+        self.matrix = None
         self.title=title
         self.main_widget = QWidget()
         layout.addWidget(self.main_widget)
@@ -769,6 +755,9 @@ class WidgetParameter:
     
     def getMiddle(self):
         return self.middle_point
+    
+    def getMatrix(self):
+        return self.matrix
 
 
 
@@ -860,6 +849,8 @@ class WidgetParameter:
             matrix.SetElement(1, 3, -center[1])  
             matrix.SetElement(2, 3, -center[2])  
 
+            self.matrix = matrix
+
             transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
             transform_node.SetMatrixTransformToParent(matrix)
             model = self.surf
@@ -933,14 +924,15 @@ class WidgetParameter:
     def curvePoint(self):
 
 
-        surf = self.surf.GetPolyData()
-        surf_normal = ComputeNormals(surf)
-        points = surf.GetPoints()
-        normal_point = surf_normal.GetPointData().GetArray('Normal')
-        point_curve = self.curve.GetCurvePointsWorld() #return point on curve
-        out_point = vtk.vtkPoints()
+        # surf = self.surf.GetPolyData()
+        # surf_normal = ComputeNormals(surf)
+        # points = surf.GetPoints()
+        # normal_point = surf_normal.GetPointData().GetArray('Normal')
+        # point_curve = self.curve.GetCurvePointsWorld() #return point on curve
+        # out_point = vtk.vtkPoints()
         # out = self.curve.ConstrainPointsToSurface(points,normal_point,surf,out_point)
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+        self.glue=True
         # print(f'out point {out_point}')
         # print(f'out function {out}')
 
@@ -986,7 +978,8 @@ class WidgetParameter:
         self.curve = newCurveNode
         slicer.mrmlScene.RemoveNode(curveNode)
         self.viewLandmark()
-        self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+        if self.glue:
+            self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
 
     def placeMiddlePoint(self):
@@ -1008,8 +1001,6 @@ class WidgetParameter:
         if displayNode is not None:
             displayNode.SetVisibility2D(False)
             displayNode.SetVisibility3D(True)
-            print("je ne suis pas None")
-
             view_ids_to_display = [viewNodes.GetItemAsObject(self.title-1).GetID()]
             displayNode.SetViewNodeIDs(view_ids_to_display)
 

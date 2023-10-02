@@ -1,5 +1,6 @@
 from typing import Any
 import torch
+from collections import deque
 
 # def wrap_error(func):
 #     nbloop =1
@@ -45,8 +46,6 @@ import torch
 
 
 def Difference(t1,t2):
-    # print(f't2 : {t2}')
-    # print(f't1 shape {t1.shape}')
     t1 = t1.unsqueeze(0).expand(len(t2),-1)
     t2 = t2.unsqueeze(1)
     d = torch.count_nonzero(t1 -t2,dim=-1)
@@ -60,7 +59,6 @@ def Neighbours(arg_point,F):
     F2 = F.unsqueeze(0).expand(len(arg_point),-1,-1)
     arg_point = arg_point.unsqueeze(1).unsqueeze(2)
     arg = torch.argwhere((F2-arg_point) == 0)
-    # print(f' arg {arg.shape}, arg : {arg}')
 
     neighbours = torch.unique(F[arg[:,1],:])
     return neighbours
@@ -70,9 +68,7 @@ def Neighbours(arg_point,F):
 
 
 
-
 def Dilation(arg_point,F,texture):
-    # print(f'arg point {arg_point}')
     arg_point = torch.tensor([arg_point]).cuda().to(torch.int64)
     F = F.cuda()
     texture = texture.cuda()
@@ -81,14 +77,30 @@ def Dilation(arg_point,F,texture):
     # dif = NoIntersection(arg_texture,neighbour)
     dif = neighbour.to(torch.int64)
     dif  = Difference(arg_texture,dif)
-    n = 0
-    while len(dif)!= 0 :#and n < 50:
-        # print(f'n = {n}, len : {len(dif)}')
-        texture[dif] = 1
-        neighbour = Neighbours(dif,F)
+
+    dif_queue = [Neighbours(arg_point,F).to(torch.int64)]
+    
+
+    nmb_treatment = 100000
+
+    while dif_queue :  # La boucle continue tant que l'une des files d'attente n'est pas vide
+        new_neighbour_batch = []
+        while dif_queue:
+            current_dif = dif_queue.pop(0)
+            if current_dif.numel() > nmb_treatment:
+                dif_queue.append(current_dif[nmb_treatment:])
+                current_dif = current_dif[:nmb_treatment]
+            texture[current_dif] = 1
+            new_neighbour_batch.append(Neighbours(current_dif, F))
+        
         arg_texture = torch.argwhere(texture == 1).squeeze()
-        # dif = NoIntersection(arg_texture,neighbour)
-        dif = neighbour.to(torch.int64)
-        dif  = Difference(arg_texture,dif)
-        n+=1
+        
+        while new_neighbour_batch:
+            current_neighbours = new_neighbour_batch.pop(0)
+            if current_neighbours.numel() > nmb_treatment:
+                new_neighbour_batch.append(current_neighbours[nmb_treatment:])
+                current_neighbours = current_neighbours[:nmb_treatment]
+            dif = Difference(arg_texture, current_neighbours.to(torch.int64))
+            if dif.numel() > 0:
+                dif_queue.append(dif)
     return texture
