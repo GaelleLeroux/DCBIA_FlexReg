@@ -185,7 +185,7 @@ def butterflyPatch(surf,
 
     dist = torch.cdist(torch.tensor(middle[:2]).unsqueeze(0),V[:,:2]).squeeze()
     middle_arg = torch.argmin(dist)
-    V_label = Dilation(middle_arg,F,V_label)
+    V_label = Dilation(middle_arg,F,V_label,surf_tmp)
 
 
 

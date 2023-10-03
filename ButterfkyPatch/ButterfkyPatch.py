@@ -732,6 +732,9 @@ class WidgetParameter:
         self.button_update.pressed.connect(self.processPatch)
         self.layout_button_display.addWidget(self.button_update)
 
+        self.label_time = QLabel(f'time')
+        self.layout_button_display.addWidget(self.label_time)
+
     def getMainWidget(self):
         return self.main_widget
     

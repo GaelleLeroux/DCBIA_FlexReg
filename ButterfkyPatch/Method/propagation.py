@@ -1,6 +1,8 @@
 from typing import Any
 import torch
 from collections import deque
+import vtk
+import numpy as np
 
 # def wrap_error(func):
 #     nbloop =1
@@ -65,10 +67,54 @@ def Neighbours(arg_point,F):
 
 
 
+# def GetNeighbors(vtkdata, pid):
+
+#     if isinstance(pid, torch.Tensor):
+#         pid = pid.item()
+#     elif isinstance(pid, np.ndarray):
+#         pid = int(pid[0])
+
+#     cells_id = vtk.vtkIdList()
+#     vtkdata.GetPointCells(pid, cells_id)
+#     neighbor_pids = []
+
+#     for ci in range(cells_id.GetNumberOfIds()):
+#         points_id_inner = vtk.vtkIdList()
+#         vtkdata.GetCellPoints(cells_id.GetId(ci), points_id_inner)
+#         for pi in range(points_id_inner.GetNumberOfIds()):
+#             pid_inner = points_id_inner.GetId(pi)
+#             if pid_inner != pid:
+#                 neighbor_pids.append(pid_inner)
+
+#     return np.unique(neighbor_pids).tolist()
+
+
+def GetNeighbors(vtkdata, pids_tensor):
+    all_neighbor_pids = []
+
+    # Convertir le tensor en une liste d'entiers
+    pids_list = pids_tensor.tolist()
+
+    for pid in pids_list:
+        cells_id = vtk.vtkIdList()
+        vtkdata.GetPointCells(pid, cells_id)
+
+        for ci in range(cells_id.GetNumberOfIds()):
+            points_id_inner = vtk.vtkIdList()
+            vtkdata.GetCellPoints(cells_id.GetId(ci), points_id_inner)
+            for pi in range(points_id_inner.GetNumberOfIds()):
+                pid_inner = points_id_inner.GetId(pi)
+                if pid_inner != pid:
+                    all_neighbor_pids.append(pid_inner)
+
+    # Rendre unique tous les indices de voisins
+    unique_neighbors = np.unique(all_neighbor_pids).tolist()
+    return torch.tensor(unique_neighbors).cuda().to(torch.int64)
 
 
 
-def Dilation(arg_point,F,texture):
+
+def Dilation(arg_point,F,texture,surf):
     arg_point = torch.tensor([arg_point]).cuda().to(torch.int64)
     F = F.cuda()
     texture = texture.cuda()
@@ -91,7 +137,8 @@ def Dilation(arg_point,F,texture):
                 dif_queue.append(current_dif[nmb_treatment:])
                 current_dif = current_dif[:nmb_treatment]
             texture[current_dif] = 1
-            new_neighbour_batch.append(Neighbours(current_dif, F))
+            # new_neighbour_batch.append(Neighbours(current_dif, F))
+            new_neighbour_batch.append(GetNeighbors(surf,current_dif))
         
         arg_texture = torch.argwhere(texture == 1).squeeze()
         

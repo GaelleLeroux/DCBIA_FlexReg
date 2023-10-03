@@ -31,7 +31,7 @@ def drawPatch(outlinePoints: list,polydata,mid):
     mid = torch.tensor(mid).unsqueeze(0).cuda()
     dist_mid_vertex = torch.cdist(mid,V)
     arg_midpoint_min = torch.argmin(dist_mid_vertex)
-    V_label = Dilation(arg_midpoint_min,F,V_label)
+    V_label = Dilation(arg_midpoint_min,F,V_label,polydata)
 
     V_labels_prediction = numpy_to_vtk(V_label.cpu().numpy())
     V_labels_prediction.SetName('Butterfly')
