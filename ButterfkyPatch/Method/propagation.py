@@ -81,7 +81,7 @@ def Dilation(arg_point,F,texture):
     dif_queue = [Neighbours(arg_point,F).to(torch.int64)]
     
 
-    nmb_treatment = 100000
+    nmb_treatment = 1000
 
     while dif_queue :  # La boucle continue tant que l'une des files d'attente n'est pas vide
         new_neighbour_batch = []

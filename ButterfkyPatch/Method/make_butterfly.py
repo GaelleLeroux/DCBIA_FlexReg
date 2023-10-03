@@ -41,14 +41,6 @@ def Bezier_bled(point1,point2,point3,pas):
     return np.matmul(matrix_t,matrix_point)
 
 
-def carre(x):
-    resultat = x ** 2
-    print(f"Le carré de {x} est {resultat}")
-    print("Oui"*150)
-    return resultat
-
-
-
 
 def butterflyPatch(surf,
             tooth_anterior_right,
