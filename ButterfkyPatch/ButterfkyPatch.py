@@ -649,7 +649,7 @@ class WidgetParameter:
         self.layout_file.addWidget(self.button_select_scan)
 
         self.combobox_choice_method = QComboBox()
-        self.combobox_choice_method.addItems(['Parameter','Landmark','Outline'])
+        self.combobox_choice_method.addItems(['Parameter','Landmark'])
         self.combobox_choice_method.activated.connect(self.changeMode)
         layout.addWidget(self.combobox_choice_method)
 

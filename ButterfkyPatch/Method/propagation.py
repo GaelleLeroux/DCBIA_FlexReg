@@ -137,7 +137,6 @@ def Dilation(arg_point,F,texture,surf):
                 dif_queue.append(current_dif[nmb_treatment:])
                 current_dif = current_dif[:nmb_treatment]
             texture[current_dif] = 1
-            # new_neighbour_batch.append(Neighbours(current_dif, F))
             new_neighbour_batch.append(GetNeighbors(surf,current_dif))
         
         arg_texture = torch.argwhere(texture == 1).squeeze()

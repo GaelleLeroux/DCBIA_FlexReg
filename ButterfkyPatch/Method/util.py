@@ -102,8 +102,6 @@ class vtkMeshTeeth(vtkTeeth):
             list_points.append(points)
             size+= points.shape[0]
 
-    
-
         Points = vtk.vtkPoints()
         Vertices = vtk.vtkCellArray()
         labels = vtk.vtkStringArray()
