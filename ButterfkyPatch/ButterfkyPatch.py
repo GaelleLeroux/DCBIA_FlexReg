@@ -570,11 +570,28 @@ class Reg:
         model.HardenTransform()
 
         # View scan
+        self.cleanView()
         self.viewScan(self.T2.getSurf(),self.T2.getTitle())
         self.viewScan(self.T1.getSurf(),self.T1.getTitle())
 
+    def cleanView(self):
+        viewNode1 = slicer.mrmlScene.GetSingletonNode("3", "vtkMRMLViewNode")
+        modelNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
+        modelNodes.InitTraversal()
+        modelsToDelete = []
+        for i in range(modelNodes.GetNumberOfItems()):
+            modelNode = modelNodes.GetNextItemAsObject()
+            modelDisplayNode = modelNode.GetDisplayNode()
+
+            if modelDisplayNode and modelDisplayNode.GetViewNodeIDs() and viewNode1.GetID() in modelDisplayNode.GetViewNodeIDs():
+                modelsToDelete.append(modelNode)
+        
+        for model in modelsToDelete:
+            slicer.mrmlScene.RemoveNode(model)
+
 
     def viewScan(self, surf,title: str):
+
         # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
@@ -648,6 +665,13 @@ class WidgetParameter:
         self.layout_file.addWidget(self.lineedit)
         self.layout_file.addWidget(self.button_select_scan)
 
+        widgetView = QWidget()
+        self.layoutView = QGridLayout(widgetView)
+        self.button_view = QPushButton('View')
+        self.button_view.pressed.connect(self.viewScan)
+        self.layoutView.addWidget(self.button_view)
+        layout.addWidget(widgetView)
+
         self.combobox_choice_method = QComboBox()
         self.combobox_choice_method.addItems(['Parameter','Landmark'])
         self.combobox_choice_method.activated.connect(self.changeMode)
@@ -690,6 +714,15 @@ class WidgetParameter:
          self.lineedit_ratio_right_bot ,
             self.lineedit_adjust_right_bot) = self.displayParamater(self.layout_right_bot,4,[14,0.33,0])
         
+       
+        self.button_update = QPushButton('Update')
+        self.button_update.pressed.connect(self.processPatch)
+        self.layout_widget.addWidget(self.button_update,2,0,1,2)
+
+       
+
+
+        
 
         #widget outline
         widget_outline = QWidget()
@@ -698,11 +731,11 @@ class WidgetParameter:
         self.layout_outline = QGridLayout(widget_outline)
         self.button_loadmarkups = QPushButton('Load Landmarks')
         self.button_loadmarkups.pressed.connect(self.loadLandamrk)
-        self.layout_outline.addWidget(self.button_loadmarkups,0,0)
+        self.layout_outline.addWidget(self.button_loadmarkups,0,0,1,2)
 
         self.button_curvepoint = QPushButton('Point Curve')
         self.button_curvepoint.pressed.connect(self.curvePoint)
-        self.layout_outline.addWidget(self.button_curvepoint,1,0)  
+        self.layout_outline.addWidget(self.button_curvepoint,1,0,1,2)  
 
         self.add_points = QPushButton('Resample points')
         self.add_points.pressed.connect(self.addPoints)
@@ -715,25 +748,27 @@ class WidgetParameter:
 
         self.button_placepoint = QPushButton('Middle point')
         self.button_placepoint.pressed.connect(self.placeMiddlePoint)
-        self.layout_outline.addWidget(self.button_placepoint,3,0)
+        self.layout_outline.addWidget(self.button_placepoint,3,0,1,2)
 
         self.button_draw = QPushButton('Draw')
         self.button_draw.pressed.connect(self.draw)
-        self.layout_outline.addWidget(self.button_draw,4,0)
+        self.layout_outline.addWidget(self.button_draw,4,0,1,2)
 
         self.layout_button_display = QGridLayout()
         layout.addLayout(self.layout_button_display)
 
-        self.button_view = QPushButton('View')
-        self.button_view.pressed.connect(self.viewScan)
-        self.layout_button_display.addWidget(self.button_view)
+        # self.button_view = QPushButton('View')
+        # self.button_view.pressed.connect(self.viewScan)
+        # self.layout_button_display.addWidget(self.button_view)
 
-        self.button_update = QPushButton('Update')
-        self.button_update.pressed.connect(self.processPatch)
-        self.layout_button_display.addWidget(self.button_update)
+        # self.button_update = QPushButton('Update')
+        # self.button_update.pressed.connect(self.processPatch)
+        # self.layout_button_display.addWidget(self.button_update)
 
         self.label_time = QLabel(f'time')
         self.layout_button_display.addWidget(self.label_time)
+        self.label_time.setVisible(False)
+
 
     def getMainWidget(self):
         return self.main_widget
@@ -859,6 +894,28 @@ class WidgetParameter:
             model = self.surf
             model.SetAndObserveTransformNodeID(transform_node.GetID())
             model.HardenTransform()
+
+            if self.glue :
+                self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+
+        else :
+            viewNode1 = slicer.mrmlScene.GetSingletonNode(str(self.title), "vtkMRMLViewNode")
+            modelNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
+            modelNodes.InitTraversal()
+            modelsToDelete = []
+            for i in range(modelNodes.GetNumberOfItems()):
+                modelNode = modelNodes.GetNextItemAsObject()
+                modelDisplayNode = modelNode.GetDisplayNode()
+    
+                if modelDisplayNode and modelDisplayNode.GetViewNodeIDs() and viewNode1.GetID() in modelDisplayNode.GetViewNodeIDs():
+                    modelsToDelete.append(modelNode)
+          
+            for model in modelsToDelete:
+                slicer.mrmlScene.RemoveNode(model)
+            
+            self.surf = None
+            self.viewScan()
+
             
 
 
