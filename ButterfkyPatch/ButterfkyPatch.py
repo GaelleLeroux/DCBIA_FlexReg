@@ -934,7 +934,12 @@ class WidgetParameter:
             transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
             transform_node.SetMatrixTransformToParent(matrix)
             model = self.surf
+            #for test
             self.camera=False
+            matrix = vtk.vtkMatrix4x4()
+            matrix.Identity()  
+            self.matrix=matrix
+            #
             if self.camera :
                 model.SetAndObserveTransformNodeID(transform_node.GetID())
                 model.HardenTransform()
@@ -1143,7 +1148,7 @@ class WidgetParameter:
         print("la list : ",list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())))
         print("le middle point : ",self.middle_point.GetNthControlPointPositionWorld(0))
         
-        # # PREPARATION DONNEE
+        # # PREPARATION DONNEE (useless because matrix=identity)
         inverse_matrix = vtk.vtkMatrix4x4()
 
         # # Calculate invert matrix to reg with original T1
@@ -1175,7 +1180,7 @@ class WidgetParameter:
         list_curve_str = ','.join(map(str, list_curve))
         print("list str curve : ",list_curve_str)
 
-        # DE STR
+        # DE STR FOR TEST
         x, y, z = map(float, vector_middle.split(','))
         middle = vtk.vtkVector3d(x, y, z)
 
@@ -1206,34 +1211,37 @@ class WidgetParameter:
         # drawPatch(list_curve_str,modelNode,vector_middle)
         # modelNode.Modified()
 
-        print("avant cli")
-        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
-                        int(self.lineedit_teeth_left_top.text),
-                       int(self.lineedit_teeth_right_top.text),
-                       int(self.lineedit_teeth_left_bot.text),
-                       int(self.lineedit_teeth_right_bot.text),
-                       float(self.lineedit_ratio_left_top.text),
-                       float(self.lineedit_ratio_right_top.text),
-                       float(self.lineedit_ratio_left_bot.text),
-                       float(self.lineedit_ratio_right_bot.text),
-                       float(self.lineedit_adjust_left_top.text),
-                       float(self.lineedit_adjust_right_top.text),
-                       float(self.lineedit_adjust_left_bot.text),
-                       float(self.lineedit_adjust_right_bot.text),
-                       list_curve_str,
-                       vector_middle,
-                       "curve")
-        self.logic.process()
+        ## CLI 
+        # print("avant cli")
+        # self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+        #                 int(self.lineedit_teeth_left_top.text),
+        #                int(self.lineedit_teeth_right_top.text),
+        #                int(self.lineedit_teeth_left_bot.text),
+        #                int(self.lineedit_teeth_right_bot.text),
+        #                float(self.lineedit_ratio_left_top.text),
+        #                float(self.lineedit_ratio_right_top.text),
+        #                float(self.lineedit_ratio_left_bot.text),
+        #                float(self.lineedit_ratio_right_bot.text),
+        #                float(self.lineedit_adjust_left_top.text),
+        #                float(self.lineedit_adjust_right_top.text),
+        #                float(self.lineedit_adjust_left_bot.text),
+        #                float(self.lineedit_adjust_right_bot.text),
+        #                list_curve_str,
+        #                vector_middle,
+        #                "curve")
+        # self.logic.process()
 
-        time.sleep(25)
+        # time.sleep(25)
+        # NOT CLI
         modelNode = self.surf.GetPolyData()
         print("_"*150)
         print("type modelNode base : ",type(modelNode))
-        # drawPatch(curve,modelNode,middle)
+        drawPatch(curve,modelNode,middle)
         # # drawPatch(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())),modelNode,self.middle_point.GetNthControlPointPositionWorld(0))
         # modelNode.Modified()
         # print("pitie")
 
+        #PLACE BACK THE CURVE (for test matrix=identity so useless)
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
         transform_node.SetMatrixTransformToParent(self.matrix)
 
@@ -1244,7 +1252,7 @@ class WidgetParameter:
 
         self.camera=True
         print("a"*200)
-        self.viewScan()
+        # self.viewScan()
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
         self.displaySegmentation(self.surf)
 
