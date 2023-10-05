@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Segmentation.Advanced</category>
+  <index>0</index>
+  <title>Flex_Reg_CLI</title>
+  <description><![CDATA[CLI module that can be built into an extension]]></description>
+  <version>0.1.0.</version>
+  <documentation-url>https://github.com/Jeanneclre/DCBIA-code</documentation-url>
+  <license/>
+  <contributor>Gaelle Leroux (University of Michigan)</contributor>
+  <acknowledgements><![CDATA[...]]></acknowledgements>
+
+  <parameters>
+
+
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+
+    <string>
+      <name>lineedit</name>
+      <label>lineedit</label>
+      <index>0</index>
+      <description>Path to the folder or file of the patient scan.</description>
+    </string>
+
+    <string>
+      <name>lineedit_teeth_left_top</name>
+      <label>lineedit_teeth_left_top</label>
+      <index>1</index>
+      <description>File with the data of the Region Of Interest (.json)</description>
+    </string>
+
+     <string>
+      <name>lineedit_teeth_right_top</name>
+      <label>lineedit_teeth_right_top</label>
+      <index>2</index>
+      <description>Path to the Folder to store the cropped scans</description>
+    </string>
+
+      <string>
+      <name>lineedit_teeth_left_bot</name>
+      <label>lineedit_teeth_left_bot</label>
+      <index>3</index>
+      <description>Suffix to name the output files</description>
+    </string>
+
+     <string>
+      <name>lineedit_teeth_right_bot</name>
+      <label>lineedit_teeth_right_bot</label>
+      <index>4</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_left_top</name>
+      <label>lineedit_ratio_left_top</label>
+      <index>5</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_right_top</name>
+      <label>lineedit_ratio_right_top</label>
+      <index>6</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_left_bot</name>
+      <label>lineedit_ratio_left_bot</label>
+      <index>7</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_ratio_right_bot</name>
+      <label>lineedit_ratio_right_bot</label>
+      <index>8</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_left_top</name>
+      <label>lineedit_adjust_left_top</label>
+      <index>9</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_right_top</name>
+      <label>lineedit_adjust_right_top</label>
+      <index>10</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_left_bot</name>
+      <label>lineedit_adjust_left_bot</label>
+      <index>11</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>lineedit_adjust_right_bot</name>
+      <label>lineedit_adjust_right_bot</label>
+      <index>12</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>curve</name>
+      <label>curve</label>
+      <index>13</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>middle_point</name>
+      <label>middle_point</label>
+      <index>14</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>type</name>
+      <label>type</label>
+      <index>15</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+
+
+
+  </parameters>
+</executable>
