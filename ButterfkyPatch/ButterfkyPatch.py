@@ -23,7 +23,12 @@ from qt import (QGridLayout,
                 QPushButton,
                 QFileDialog,
                 QSpinBox,
-                QWidget)
+                QWidget,
+                QTimer)
+
+
+import threading
+# from qt.QtCore import QTimer
 
 
 from Method.make_butterfly import butterflyPatch
@@ -208,7 +213,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.reg.run(output_text, suffix_text)
 
     def manageNumberWidgetScan(self,number):
-        print(f'manage number widget scan, number : {number}')
+        # print(f'manage number widget scan, number : {number}')
         for i in  self.list_widget_scan:
             if i.getName()=="WidgetGo":
                 self.removeWidgetScan()
@@ -476,6 +481,7 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         parameters ["type"] = self.type
 
 
+
         flybyProcess = slicer.modules.flex_reg_cli
         self.cliNode = slicer.cli.run(flybyProcess,None, parameters)  
         return flybyProcess
@@ -691,6 +697,8 @@ class WidgetParameter:
         layout.addWidget(self.main_widget)
         self.maint_layout = QVBoxLayout(self.main_widget)
         self.setup(self.maint_layout,title)
+        self.timer = QTimer()
+        self.start_time = None
 
     def setup(self,layout,title):
 
@@ -875,7 +883,6 @@ class WidgetParameter:
         if self.surf == None :
             # Load model
             self.surf = slicer.util.loadModel(self.lineedit.text)
-            print(type(self.surf))
 
             # Get data model
             displayNode = self.surf.GetDisplayNode()
@@ -935,10 +942,10 @@ class WidgetParameter:
             transform_node.SetMatrixTransformToParent(matrix)
             model = self.surf
             #for test
-            self.camera=False
-            matrix = vtk.vtkMatrix4x4()
-            matrix.Identity()  
-            self.matrix=matrix
+            # self.camera=False
+            # matrix = vtk.vtkMatrix4x4()
+            # matrix.Identity()  
+            # self.matrix=matrix
             #
             if self.camera :
                 model.SetAndObserveTransformNodeID(transform_node.GetID())
@@ -990,32 +997,24 @@ class WidgetParameter:
                        "None",
                        "butterfly")
         self.logic.process()
-        print("apres cli")
-
-        # butterflyPatch(modelNode,
-        #                 int(self.lineedit_teeth_left_top.text),
-        #                int(self.lineedit_teeth_right_top.text),
-        #                int(self.lineedit_teeth_left_bot.text),
-        #                int(self.lineedit_teeth_right_bot.text),
-        #                float(self.lineedit_ratio_left_top.text),
-        #                float(self.lineedit_ratio_right_top.text),
-        #                float(self.lineedit_ratio_left_bot.text),
-        #                float(self.lineedit_ratio_right_bot.text),
-        #                float(self.lineedit_adjust_left_top.text),
-        #                float(self.lineedit_adjust_right_top.text),
-        #                float(self.lineedit_adjust_left_bot.text),
-        #                float(self.lineedit_adjust_right_bot.text))
-        time.sleep(10)
-
-        # modelNode.Modified()
-        self.viewScan()
-        modelNode = self.surf.GetPolyData()
-        self.displaySegmentation(self.surf)
+        self.start_time = time.time()
+        self.timer.timeout.connect(self.onProcessUpdateButterfly)
+        self.timer.start(500)
 
 
-    def test(self):
-        print("aaa")
+    def onProcessUpdateButterfly(self):
+        elapsed_time = time.time() - self.start_time
+        self.label_time.setVisible(True)
+        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
+        if elapsed_time >= 30:
+            self.timer.stop()
+
+        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self.viewScan()
+            modelNode = self.surf.GetPolyData()
+            self.displaySegmentation(self.surf)
+            self.timer.stop()
 
     def loadLandamrk(self):
         # node = slicer.util.loadMarkups('/home/luciacev/Desktop/Data/ButterflyPatch/F.mrk.json')
@@ -1023,8 +1022,6 @@ class WidgetParameter:
         bounding_box = [0, 0, 0, 0, 0, 0]
         self.surf.GetRASBounds(bounding_box)
         center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
-
-        print("center in load landmarks : ",center)
 
         self.curve = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f'T{self.title} curve')
 
@@ -1140,19 +1137,12 @@ class WidgetParameter:
 
 
     def draw(self):
-        #PRINT DE COMPREHENSION : 
-        # print(type(modelNode))
-        print("le type de la list : ",type(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))))
-        print("le type du premier element de la list : ",type(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))[0]))
-        print("le type du middle point : ",type(self.middle_point.GetNthControlPointPositionWorld(0)))
-        print("la list : ",list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())))
-        print("le middle point : ",self.middle_point.GetNthControlPointPositionWorld(0))
         
-        # # PREPARATION DONNEE (useless because matrix=identity)
+        # Move the curve and the middle point where the original model is located
         inverse_matrix = vtk.vtkMatrix4x4()
 
-        # # Calculate invert matrix to reg with original T1
-        inverse_matrix.DeepCopy(self.getMatrix())  # Copie les éléments de 'matrix' dans 'inverse_matrix'
+        # Calculate invert matrix to reg with original T1
+        inverse_matrix.DeepCopy(self.getMatrix()) 
         inverse_matrix.Invert()
 
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
@@ -1168,93 +1158,66 @@ class WidgetParameter:
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
         middle_point_vector3D = self.middle_point.GetNthControlPointPositionWorld(0)
-        print("le middle point2 : ",self.middle_point.GetNthControlPointPositionWorld(0))
-        print("la list2 : ",list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())))
-        print("le type de la list2 : ",type(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))))
-        print("type element curve : ",type(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))[0]))
         
-        #STR
+        # put the data in str type
         vector_middle = ','.join([str(middle_point_vector3D.GetX()), str(middle_point_vector3D.GetY()), str(middle_point_vector3D.GetZ())])
-
         list_curve = list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))
-        list_curve_str = ','.join(map(str, list_curve))
-        print("list str curve : ",list_curve_str)
+        list_curve_str = ','.join(map(str, list_curve))   
+        vector_middle="["+vector_middle+"]"
 
-        # DE STR FOR TEST
-        x, y, z = map(float, vector_middle.split(','))
-        middle = vtk.vtkVector3d(x, y, z)
+        # CLI 
+        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                        int(self.lineedit_teeth_left_top.text),
+                       int(self.lineedit_teeth_right_top.text),
+                       int(self.lineedit_teeth_left_bot.text),
+                       int(self.lineedit_teeth_right_bot.text),
+                       float(self.lineedit_ratio_left_top.text),
+                       float(self.lineedit_ratio_right_top.text),
+                       float(self.lineedit_ratio_left_bot.text),
+                       float(self.lineedit_ratio_right_bot.text),
+                       float(self.lineedit_adjust_left_top.text),
+                       float(self.lineedit_adjust_right_top.text),
+                       float(self.lineedit_adjust_left_bot.text),
+                       float(self.lineedit_adjust_right_bot.text),
+                       list_curve_str,
+                       vector_middle,
+                       "curve")
+        self.logic.process()
 
-        print("middle : ",middle)
-        print("type middle",type(middle))
+        self.start_time = time.time()
+        self.timer.timeout.connect(self.onProcessUpdateCurve)
+        self.timer.start(500)
 
-        # Splitting the string into individual array-like strings
-        array_strings = list_curve_str.split('],[')
-
-        # Initializing an empty list to store the ndarrays
-        arrays = []
-
-        # Looping through each array-like string to convert them into numpy arrays
-        for array_string in array_strings:
-            # Removing the brackets and splitting by spaces to get individual numbers
-            numbers = array_string.replace('[', '').replace(']', '').split()
-            # Converting the numbers into a numpy array and appending to the list
-            arrays.append(np.array([float(num) for num in numbers]))
-
-        curve =[arr.astype(np.float32) for arr in arrays]
-        print("curve : ",curve)
-        print("type curve : ",type(curve))
-        print("type element curve : ",type(curve[0]))
 
         
-        
-        # drawPatch(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())),modelNode,self.middle_point.GetNthControlPointPositionWorld(0))
-        # drawPatch(list_curve_str,modelNode,vector_middle)
-        # modelNode.Modified()
 
-        ## CLI 
-        # print("avant cli")
-        # self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
-        #                 int(self.lineedit_teeth_left_top.text),
-        #                int(self.lineedit_teeth_right_top.text),
-        #                int(self.lineedit_teeth_left_bot.text),
-        #                int(self.lineedit_teeth_right_bot.text),
-        #                float(self.lineedit_ratio_left_top.text),
-        #                float(self.lineedit_ratio_right_top.text),
-        #                float(self.lineedit_ratio_left_bot.text),
-        #                float(self.lineedit_ratio_right_bot.text),
-        #                float(self.lineedit_adjust_left_top.text),
-        #                float(self.lineedit_adjust_right_top.text),
-        #                float(self.lineedit_adjust_left_bot.text),
-        #                float(self.lineedit_adjust_right_bot.text),
-        #                list_curve_str,
-        #                vector_middle,
-        #                "curve")
-        # self.logic.process()
 
-        # time.sleep(25)
-        # NOT CLI
-        modelNode = self.surf.GetPolyData()
-        print("_"*150)
-        print("type modelNode base : ",type(modelNode))
-        drawPatch(curve,modelNode,middle)
-        # # drawPatch(list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())),modelNode,self.middle_point.GetNthControlPointPositionWorld(0))
-        # modelNode.Modified()
-        # print("pitie")
+    def onProcessUpdateCurve(self):
+        elapsed_time = time.time() - self.start_time
+        self.label_time.setVisible(True)
+        self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
-        #PLACE BACK THE CURVE (for test matrix=identity so useless)
-        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        transform_node.SetMatrixTransformToParent(self.matrix)
+        if elapsed_time >= 30:
+            self.timer.stop()
 
-        self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
-        self.curve.HardenTransform()
-        self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
-        self.middle_point.HardenTransform()
+        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL 
+            transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+            transform_node.SetMatrixTransformToParent(self.matrix)
 
-        self.camera=True
-        print("a"*200)
-        # self.viewScan()
-        self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
-        self.displaySegmentation(self.surf)
+            self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
+            self.curve.HardenTransform()
+            self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
+            self.middle_point.HardenTransform()
+
+            # Load the new model and display the patch 
+            self.camera=True
+            self.viewScan()
+            self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+            self.displaySegmentation(self.surf)
+            self.timer.stop()
+
+
 
 
     def displaySurf(self,surf):

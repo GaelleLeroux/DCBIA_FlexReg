@@ -8,7 +8,6 @@ def drawPatch(outlinePoints: list,polydata,mid):
     step = 0.2
     radius = 0.5 # celui de Nathan
     radius = 1.1
-    radius = 3
     P0 = torch.tensor(np.array(outlinePoints)).unsqueeze(0).cuda()
     P1 = torch.tensor(np.array(outlinePoints[1:] + [outlinePoints[0]])).unsqueeze(0).cuda()
 
@@ -27,13 +26,6 @@ def drawPatch(outlinePoints: list,polydata,mid):
     dist = torch.cdist(P,V)
     arg_outline = torch.argwhere(dist < radius)[:,1]
     V_label = torch.zeros((V.shape[0])).cuda()
-    print("*"*200)
-    print('arg_outline : ',arg_outline)
-    print('arg_outline.shape : ',arg_outline.shape)
-    print('P : ',P)
-    print('P.shape : ',P.shape)
-    print('V : ',V)
-    print('V.shape : ',V.shape)
     V_label[arg_outline] = 1
 
     mid = torch.tensor(mid).unsqueeze(0).cuda()

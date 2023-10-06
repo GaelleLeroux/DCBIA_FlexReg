@@ -9,18 +9,26 @@ import numpy as np
 
 
 def main(args):
-    os.makedirs("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/bonjour",exist_ok=True)
-    print("dans cli avant traitement")
-    print(args.lineedit)
+    # os.makedirs("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/bonjour",exist_ok=True)
+    # Read the file (coordinate using : LPS)
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(args.lineedit)
     reader.Update()
     modelNode = reader.GetOutput()
-    print("_"*150)
-    print("type modelNode cli : ",type(modelNode))
+
+    # Transform the data to read it in coordinate RAS (like slicer)
+    transform = vtk.vtkTransform()
+    transform.Scale(-1, -1, 1)
+
+    transformFilter = vtk.vtkTransformPolyDataFilter()
+    transformFilter.SetInputData(modelNode)
+    transformFilter.SetTransform(transform)
+    transformFilter.Update()
+
+    modelNode = transformFilter.GetOutput()
+   
 
     if args.type=="butterfly":
-    # modelNode = vtk.vtkPolyDataReader(args.lineedit)
         butterflyPatch(modelNode,
                         args.lineedit_teeth_left_top,
                         args.lineedit_teeth_right_top,
@@ -36,11 +44,11 @@ def main(args):
                         args.lineedit_adjust_right_bot)
     
     elif args.type=="curve":
-        x, y, z = map(float, args.middle_point.split(','))
+        # Reading the data
+        vector_middle = args.middle_point[1:-1]
+        x, y, z = map(float, vector_middle.split(','))
         middle = vtk.vtkVector3d(x, y, z)
 
-        print("middle : ",middle)
-        print("type middle",type(middle))
 
         # Splitting the string into individual array-like strings
         array_strings = args.curve.split('],[')
@@ -56,15 +64,27 @@ def main(args):
             arrays.append(np.array([float(num) for num in numbers]))
 
         curve =[arr.astype(np.float32) for arr in arrays]
-        print("curve : ",curve)
-        print("type curve : ",type(curve))
-        print("type element curve : ",type(curve[0]))
 
         drawPatch(curve,modelNode,middle)
         print("noo"*150)
 
+    # Save the changement in modelNode
+    modelNode.Modified()
+
+    # Put back the data in the LPS coordinate
+    inverseTransform = vtk.vtkTransform()
+    inverseTransform.Scale(-1, -1, 1)
+
+    inverseTransformFilter = vtk.vtkTransformPolyDataFilter()
+    inverseTransformFilter.SetInputData(modelNode)
+    inverseTransformFilter.SetTransform(inverseTransform)
+    inverseTransformFilter.Update()
+
+    modelNode = inverseTransformFilter.GetOutput()
 
     modelNode.Modified()
+
+    # Save the new file with the model
     writer = vtk.vtkPolyDataWriter()
     writer.SetFileName(args.lineedit)
     writer.SetInputData(modelNode)
