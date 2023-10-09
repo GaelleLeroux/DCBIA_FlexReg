@@ -128,6 +128,13 @@
       <description>logPath (for the progress bar?)</description>
     </string>
 
+    <string>
+      <name>path_reg</name>
+      <label>path_reg</label>
+      <index>16</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
 
 
 

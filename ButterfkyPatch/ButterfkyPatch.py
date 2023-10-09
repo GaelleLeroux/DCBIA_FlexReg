@@ -415,7 +415,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
                  lineedit_adjust_right_bot=None,
                  curve="",
                  middle_point="",
-                 type=None):
+                 type=None,
+                 path_reg=""):
         """
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
@@ -440,6 +441,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         self.middle_point=middle_point
 
         self.type=type
+
+        self.path_reg=path_reg
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -479,6 +482,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         parameters ["middle_point"] = self.middle_point
 
         parameters ["type"] = self.type
+
+        parameters ["path_reg"] = self.path_reg
 
 
 
@@ -561,64 +566,105 @@ class Reg:
     def __init__(self,T1=None,T2=None) -> None:
         self.T1 = T1
         self.T2 = T2
+        self.surfT1=None
+        self.surfT2=None
+        self.start_time=0
+        self.timer = QTimer()
 
-    def run(self,output_folder:str,suffix:str):
+    def onProcessUpdateICP(self):
+        elapsed_time = time.time() - self.start_time
+        print(f"time : {round(float(elapsed_time),2)}s")
 
+        if elapsed_time >= 30:
+            self.timer.stop()
 
-        # ICP
-        methode = [vtkICP()]
-        option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
-        icp = ICP(methode, option=option)
-        output_icp = icp.run(self.T2.getSurf().GetPolyData(), self.T1.getSurf().GetPolyData())
-       
-        # Apply the matrix to reg with T1 center in front of camera
-        tform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        tform.SetMatrixTransformToParent(slicer.util.vtkMatrixFromArray(output_icp["matrix"]))
-        model = self.T2.getSurf()
-        model.SetAndObserveTransformNodeID(tform.GetID())
-        model.HardenTransform()
+        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
 
-        # If curve move the curve
-        curve = self.T2.getCurve()
-        middle_point = self.T2.getMiddle()
-        if curve!=None and middle_point!=None : 
-            curve.SetAndObserveTransformNodeID(tform.GetID())
-            curve.HardenTransform()
-            middle_point.SetAndObserveTransformNodeID(tform.GetID())
-            middle_point.HardenTransform()
+            print("FIN DE ICP")
+            self.timer.stop()
+            self.endProcess()
 
 
-        # Créez une nouvelle matrice pour stocker la matrice inverse
-        inverse_matrix = vtk.vtkMatrix4x4()
+    def endProcess(self):
+        self.cleanView()
+        # Get data of model
+        self.surfT1 = slicer.util.loadModel(self.T1.getPath())
+        self.surfT2 = slicer.util.loadModel("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/result.vtk")
+        points = self.surfT1.GetPolyData().GetPoints()
 
-        # Calculate invert matrix to reg with original T1
-        inverse_matrix.DeepCopy(self.T1.getMatrix())  # Copie les éléments de 'matrix' dans 'inverse_matrix'
-        inverse_matrix.Invert()
+        # Get data model
+        displayNodeT1 = self.surfT1.GetDisplayNode()
+        displayNodeT2 = self.surfT2.GetDisplayNode()
+        
+        # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+        viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+        
+        customLayoutId=501
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(customLayoutId)
 
-        # Apply invert matrix
+        viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
+
+        colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
+        displayNodeT1.SetColor(colors[0])
+        displayNodeT2.SetColor(colors[1])
+        
+        if viewNode:
+            # Display model in windows
+            displayNodeT1.SetViewNodeIDs([viewNode.GetID()])
+            displayNodeT2.SetViewNodeIDs([viewNode.GetID()])
+
+        else:
+            slicer.util.errorDisplay(f"There is 3D windows available with the index : {2}.")
+
+        # Get center of model
+        center = [0.0, 0.0, 0.0]
+        for i in range(points.GetNumberOfPoints()):
+            x, y, z = points.GetPoint(i)
+            center[0] += x
+            center[1] += y
+            center[2] += z
+
+        center[0] /= points.GetNumberOfPoints()
+        center[1] /= points.GetNumberOfPoints()
+        center[2] /= points.GetNumberOfPoints()
+
+
+        # Get the focal point of the camera
+        render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
+        camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+        focal_point = camera.GetFocalPoint() 
+        center[0]-=focal_point[0]
+        center[1]-=focal_point[1]
+        center[2]-=focal_point[2]
+
+
+        # Create matrix to center the vtk
+        matrix = vtk.vtkMatrix4x4()
+        matrix.Identity()  
+        matrix.SetElement(0, 3, -center[0])  
+        matrix.SetElement(1, 3, -center[1])  
+        matrix.SetElement(2, 3, -center[2])  
+
+        self.matrix = matrix
+        matrix = self.T1.getMatrix()
+
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        transform_node.SetMatrixTransformToParent(inverse_matrix)
-        model = self.T2.getSurf()
+        transform_node.SetMatrixTransformToParent(matrix)
+        model = self.surfT1
         model.SetAndObserveTransformNodeID(transform_node.GetID())
         model.HardenTransform()
 
-        # SAVE NEW T2
-        input_T2 = self.T2.getPath()
-        outpath = input_T2.replace(os.path.dirname(input_T2),output_folder)
-        fname, extension_scan = os.path.splitext(input_T2)
-        slicer.util.saveNode(model, outpath.split(extension_scan)[0]+suffix+extension_scan)
-
-        # Apply matrix to center in front of camera
-        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        transform_node.SetMatrixTransformToParent(self.T1.getMatrix())
-        model = self.T2.getSurf()
+        model = self.surfT2
         model.SetAndObserveTransformNodeID(transform_node.GetID())
         model.HardenTransform()
 
         # View scan
-        self.cleanView()
-        self.viewScan(self.T2.getSurf(),self.T2.getTitle())
-        self.viewScan(self.T1.getSurf(),self.T1.getTitle())
+        # self.cleanView()
+        # self.viewScan(self.surfT2,self.T2.getTitle())
+        # self.viewScan(self.surfT1,self.T1.getTitle())
+
 
     def cleanView(self):
         viewNode1 = slicer.mrmlScene.GetSingletonNode("3", "vtkMRMLViewNode")
@@ -636,6 +682,33 @@ class Reg:
             slicer.mrmlScene.RemoveNode(model)
 
 
+    def run(self,output_folder:str,suffix:str):
+
+        # CLI 
+        self.logic = ButterfkyPatchLogic(self.T2.getPath(),
+                        int(0),
+                       int(0),
+                       int(0),
+                       int(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       float(0),
+                       "None",
+                       "None",
+                       "icp",
+                       self.T1.getPath())
+        self.logic.process()
+
+        self.start_time = time.time()
+        self.timer.timeout.connect(self.onProcessUpdateICP)
+        self.timer.start(500)
+
+     
     def viewScan(self, surf,title: str):
 
         # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
@@ -648,21 +721,21 @@ class Reg:
         
         # Original Display Node
         originalDisplayNode = surf.GetDisplayNode()
-        originalDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(title - 1).GetID()])  # Afficher dans la vue title - 1
+        # originalDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(title - 1).GetID()])  # Afficher dans la vue title - 1
         
         # Créer une copie du modèle original pour la vue 2
-        copied_model = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
-        copied_model.SetAndObservePolyData(surf.GetPolyData())
-        copied_model.SetName("T"+str(title) + "_copy")
+        # copied_model = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
+        # copied_model.SetAndObservePolyData(surf.GetPolyData())
+        # copied_model.SetName("T"+str(title) + "_copy")
         
         colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
-        # Créer un nouveau Display Node pour la copie, avec une couleur verte
         colorDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         colorDisplayNode.SetColor(colors[title-1])
         colorDisplayNode.Visibility2DOff()
         colorDisplayNode.Visibility3DOn()
         slicer.mrmlScene.AddNode(colorDisplayNode)
-        copied_model.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
+        # copied_model.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
+        surf.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
         colorDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(2).GetID()])  # Afficher dans la vue 2
 
 
@@ -978,7 +1051,6 @@ class WidgetParameter:
 
 
     def processPatch(self):
-        modelNode = self.surf.GetPolyData()
         print("avant cli")
         self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                         int(self.lineedit_teeth_left_top.text),
@@ -995,7 +1067,8 @@ class WidgetParameter:
                        float(self.lineedit_adjust_right_bot.text),
                        "None",
                        "None",
-                       "butterfly")
+                       "butterfly",
+                       "None")
         self.logic.process()
         self.start_time = time.time()
         self.timer.timeout.connect(self.onProcessUpdateButterfly)
@@ -1007,12 +1080,8 @@ class WidgetParameter:
         self.label_time.setVisible(True)
         self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
-        if elapsed_time >= 30:
-            self.timer.stop()
-
-        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             self.viewScan()
-            modelNode = self.surf.GetPolyData()
             self.displaySegmentation(self.surf)
             self.timer.stop()
 
@@ -1141,7 +1210,7 @@ class WidgetParameter:
         # Move the curve and the middle point where the original model is located
         inverse_matrix = vtk.vtkMatrix4x4()
 
-        # Calculate invert matrix to reg with original T1
+        # Calculate invert matrix to reg  curve and middle point with original T1
         inverse_matrix.DeepCopy(self.getMatrix()) 
         inverse_matrix.Invert()
 
@@ -1181,7 +1250,8 @@ class WidgetParameter:
                        float(self.lineedit_adjust_right_bot.text),
                        list_curve_str,
                        vector_middle,
-                       "curve")
+                       "curve",
+                       "None")
         self.logic.process()
 
         self.start_time = time.time()
@@ -1202,6 +1272,8 @@ class WidgetParameter:
 
         elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL 
+            self.camera=True
+            self.viewScan()
             transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
             transform_node.SetMatrixTransformToParent(self.matrix)
 
@@ -1211,8 +1283,6 @@ class WidgetParameter:
             self.middle_point.HardenTransform()
 
             # Load the new model and display the patch 
-            self.camera=True
-            self.viewScan()
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
             self.displaySegmentation(self.surf)
             self.timer.stop()

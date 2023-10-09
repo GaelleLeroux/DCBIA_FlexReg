@@ -4,6 +4,8 @@ import argparse
 import vtk
 from Method.make_butterfly import butterflyPatch
 from Method.draw import drawPatch
+from Method.ICP import vtkICP,ICP
+from Method.vtkSegTeeth import vtkMeshTeeth
 import os 
 import numpy as np
 
@@ -66,7 +68,47 @@ def main(args):
         curve =[arr.astype(np.float32) for arr in arrays]
 
         drawPatch(curve,modelNode,middle)
-        print("noo"*150)
+
+    elif args.type=="icp":
+        reader = vtk.vtkPolyDataReader()
+        reader.SetFileName(args.path_reg)
+        reader.Update()
+        modelNodeT1 = reader.GetOutput()
+
+        # Transform the data to read it in coordinate RAS (like slicer)
+        transform = vtk.vtkTransform()
+        transform.Scale(-1, -1, 1)
+
+        transformFilter = vtk.vtkTransformPolyDataFilter()
+        transformFilter.SetInputData(modelNodeT1)
+        transformFilter.SetTransform(transform)
+        transformFilter.Update()
+
+        modelNodeT1 = transformFilter.GetOutput()
+        # ICP
+        methode = [vtkICP()]
+        option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
+        icp = ICP(methode, option=option)
+        output_icp = icp.run(modelNode, modelNodeT1)
+
+        matrix_array=output_icp["matrix"]
+
+        vtk_matrix = vtk.vtkMatrix4x4()
+        for i in range(4):
+            for j in range(4):
+                vtk_matrix.SetElement(i, j, matrix_array[i, j])
+
+        transform = vtk.vtkTransform()
+        transform.SetMatrix(vtk_matrix)
+        transformFilter = vtk.vtkTransformPolyDataFilter()
+        transformFilter.SetInputData(modelNode)
+        transformFilter.SetTransform(transform)
+        transformFilter.Update()
+
+        modelNode = transformFilter.GetOutput()
+        modelNode.Modified()
+
+        
 
     # Save the changement in modelNode
     modelNode.Modified()
@@ -85,8 +127,12 @@ def main(args):
     modelNode.Modified()
 
     # Save the new file with the model
+    
     writer = vtk.vtkPolyDataWriter()
-    writer.SetFileName(args.lineedit)
+    if args.type!="icp":
+        writer.SetFileName(args.lineedit)
+    else:
+        writer.SetFileName("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/result.vtk")
     writer.SetInputData(modelNode)
     writer.Write()
 
@@ -123,6 +169,8 @@ if __name__ == "__main__":
     parser.add_argument('curve',type=str)
     parser.add_argument('middle_point',type=str)
     parser.add_argument('type',type=str)
+
+    parser.add_argument('path_reg',type=str)
     
     
 
