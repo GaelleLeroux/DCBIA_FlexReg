@@ -5,8 +5,6 @@ from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 from Method.orientation import orientation
 from Method.util import vtkMeanTeeth, ToothNoExist
 from Method.propagation import Dilation
-import subprocess
-
 
 
 
