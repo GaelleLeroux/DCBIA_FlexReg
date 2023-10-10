@@ -1,11 +1,9 @@
-import logging
 import os
 from functools import partial
 from vtk.util.numpy_support import vtk_to_numpy
 import vtk
 import time
-import numpy as np
-# import sip
+
 
 import slicer
 from slicer.ScriptedLoadableModule import *
@@ -28,12 +26,8 @@ from qt import (QGridLayout,
                 QDialog)
 
 
-import threading
-# from qt.QtCore import QTimer
 
 
-from Method.make_butterfly import butterflyPatch
-from Method import ComputeNormals, drawPatch,vtkMeshTeeth,vtkICP,ICP,WriteSurf
 #
 # ButterfkyPatch
 #

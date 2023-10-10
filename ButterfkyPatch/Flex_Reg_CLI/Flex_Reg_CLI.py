@@ -11,7 +11,6 @@ import numpy as np
 
 
 def main(args):
-    # os.makedirs("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/bonjour",exist_ok=True)
     # Read the file (coordinate using : LPS)
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(args.lineedit)
@@ -70,6 +69,7 @@ def main(args):
         drawPatch(curve,modelNode,middle)
 
     elif args.type=="icp":
+        # Reading the T1 model to register
         reader = vtk.vtkPolyDataReader()
         reader.SetFileName(args.path_reg)
         reader.Update()
@@ -85,6 +85,7 @@ def main(args):
         transformFilter.Update()
 
         modelNodeT1 = transformFilter.GetOutput()
+
         # ICP
         methode = [vtkICP()]
         option = vtkMeshTeeth(list_teeth=[1], property="Butterfly")
@@ -98,6 +99,7 @@ def main(args):
             for j in range(4):
                 vtk_matrix.SetElement(i, j, matrix_array[i, j])
 
+        # Apply the matrix to register
         transform = vtk.vtkTransform()
         transform.SetMatrix(vtk_matrix)
         transformFilter = vtk.vtkTransformPolyDataFilter()
@@ -127,6 +129,7 @@ def main(args):
     modelNode.Modified()
 
     # Save the new file with the model
+
     
     writer = vtk.vtkPolyDataWriter()
     if args.type!="icp":
