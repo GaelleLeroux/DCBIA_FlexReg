@@ -156,6 +156,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.ui.spinBoxnumberscan.valueChanged.connect(self.manageNumberWidgetScan)
         self.ui.spinBoxnumberscan.setVisible(False)
+        self.ui.label.setVisible(False)
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
@@ -215,7 +216,6 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         '''
         Manage the number of widgets, all the widgets are the same and they're stock in list_widget_scan
         '''
-        # print(f'manage number widget scan, number : {number}')
         for i in  self.list_widget_scan:
             if i.getName()=="WidgetGo":
                 self.removeWidgetScan()
@@ -606,6 +606,57 @@ class Reg:
         self.suffix=None
         self.timer = QTimer()
 
+    def run(self,output_folder:str,suffix:str)->None:
+        '''
+        call the cli for the registration with icp method and launch onProcessUpdateICP
+        '''
+        if self.T1.getSurf()!=None and  self.T2.getSurf()!=None :
+            if self.isButterflyPatchAvailable(self.T1.getSurf()) and self.isButterflyPatchAvailable(self.T2.getSurf()) :
+                self.output_folder=output_folder
+                self.suffix=suffix
+                self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
+                # CLI 
+                self.logic = ButterfkyPatchLogic(self.T2.getPath(),
+                                int(0),
+                            int(0),
+                            int(0),
+                            int(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            float(0),
+                            "None",
+                            "None",
+                            "icp",
+                            self.T1.getPath(),
+                            output_folder,
+                            suffix)
+                self.logic.process()
+
+                self.start_time = time.time()
+                self.timer.timeout.connect(self.onProcessUpdateICP)
+                self.timer.start(500)
+
+            else:
+                slicer.util.infoDisplay("Create patch on T1 and T2 before registration")
+        else :
+            slicer.util.infoDisplay(f"Load a vtk file in window number : 1 and 2 \nTo do this, enter the path to a vtk file and click on view.")
+
+    def isButterflyPatchAvailable(self, model_node)->bool:
+        """
+        Check if the Butterfly patch is available for the provided model node.
+        """
+        polyData = model_node.GetPolyData()
+        if polyData:
+            scalars = polyData.GetPointData().GetScalars("Butterfly")
+            return scalars is not None
+        return False
+
+
     def onProcessUpdateICP(self)->None:
         '''
         Called at the same time of the cli, update every 500ms to update the time since the begenning.
@@ -686,7 +737,6 @@ class Reg:
 
   
 
-
     def cleanView(self)->None:
         '''
         Delete all model load in windows 2
@@ -705,39 +755,6 @@ class Reg:
         for model in modelsToDelete:
             slicer.mrmlScene.RemoveNode(model)
 
-
-    def run(self,output_folder:str,suffix:str)->None:
-        '''
-        call the cli and launch onProcessUpdateICP
-        '''
-        self.output_folder=output_folder
-        self.suffix=suffix
-        self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
-        # CLI 
-        self.logic = ButterfkyPatchLogic(self.T2.getPath(),
-                        int(0),
-                       int(0),
-                       int(0),
-                       int(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       float(0),
-                       "None",
-                       "None",
-                       "icp",
-                       self.T1.getPath(),
-                       output_folder,
-                       suffix)
-        self.logic.process()
-
-        self.start_time = time.time()
-        self.timer.timeout.connect(self.onProcessUpdateICP)
-        self.timer.start(500)
 
     
     def getName(self)->str:
@@ -949,76 +966,87 @@ class WidgetParameter:
         else : 
             self.lineedit.insert('/home/luciacev/Documents/Gaelle/Data/Flex_Reg/P16_T2.vtk')
 
+    def checkLineEdit(self)->bool:
+        '''
+        check if input path is a vtk file
+        '''
+        fname, extension = os.path.splitext(os.path.basename(self.lineedit.text))
+        return extension=='.vtk'
+
 
     def viewScan(self):
         '''
         Display the scan in the correct window. If scan already loaded, delete it and display the new one
         '''
         if self.surf == None :
-            # Load model
-            self.surf = slicer.util.loadModel(self.lineedit.text)
+            if self.checkLineEdit():
+                # Load model
+                self.surf = slicer.util.loadModel(self.lineedit.text)
 
-            # Get data model
-            displayNode = self.surf.GetDisplayNode()
-            
-            # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
-            viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-            viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
-            
-            customLayoutId=501
-            layoutManager = slicer.app.layoutManager()
-            layoutManager.setLayout(customLayoutId)
+                # Get data model
+                displayNode = self.surf.GetDisplayNode()
+                
+                # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+                viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
+                viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+                
+                customLayoutId=501
+                layoutManager = slicer.app.layoutManager()
+                layoutManager.setLayout(customLayoutId)
 
-            viewNode = viewNodes.GetItemAsObject(self.title - 1) if viewNodes.GetNumberOfItems() >= self.title else None
-            
-            if viewNode:
-                # Display model in windows
-                displayNode.SetViewNodeIDs([viewNode.GetID()])
+                viewNode = viewNodes.GetItemAsObject(self.title - 1) if viewNodes.GetNumberOfItems() >= self.title else None
+                
+                if viewNode:
+                    # Display model in windows
+                    displayNode.SetViewNodeIDs([viewNode.GetID()])
+
+                else:
+                    slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
+
+                # Get data of model
+                points = self.surf.GetPolyData().GetPoints()
+
+                # Get center of model
+                center = [0.0, 0.0, 0.0]
+                for i in range(points.GetNumberOfPoints()):
+                    x, y, z = points.GetPoint(i)
+                    center[0] += x
+                    center[1] += y
+                    center[2] += z
+
+                center[0] /= points.GetNumberOfPoints()
+                center[1] /= points.GetNumberOfPoints()
+                center[2] /= points.GetNumberOfPoints()
+
+
+                # Get the focal point of the camera
+                render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
+                camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+                focal_point = camera.GetFocalPoint() 
+                center[0]-=focal_point[0]
+                center[1]-=focal_point[1]
+                center[2]-=focal_point[2]
+
+
+                # Create matrix to center the vtk
+                matrix = vtk.vtkMatrix4x4()
+                matrix.Identity()  
+                matrix.SetElement(0, 3, -center[0])  
+                matrix.SetElement(1, 3, -center[1])  
+                matrix.SetElement(2, 3, -center[2])  
+
+                self.matrix = matrix
+
+                transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+                transform_node.SetMatrixTransformToParent(matrix)
+                model = self.surf
+
+                if self.camera :
+                    model.SetAndObserveTransformNodeID(transform_node.GetID())
+                    model.HardenTransform()
 
             else:
-                slicer.util.errorDisplay(f"There is 3D windows available with the index : {self.title - 1}.")
-
-            # Get data of model
-            points = self.surf.GetPolyData().GetPoints()
-
-            # Get center of model
-            center = [0.0, 0.0, 0.0]
-            for i in range(points.GetNumberOfPoints()):
-                x, y, z = points.GetPoint(i)
-                center[0] += x
-                center[1] += y
-                center[2] += z
-
-            center[0] /= points.GetNumberOfPoints()
-            center[1] /= points.GetNumberOfPoints()
-            center[2] /= points.GetNumberOfPoints()
-
-
-            # Get the focal point of the camera
-            render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
-            camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
-            focal_point = camera.GetFocalPoint() 
-            center[0]-=focal_point[0]
-            center[1]-=focal_point[1]
-            center[2]-=focal_point[2]
-
-
-            # Create matrix to center the vtk
-            matrix = vtk.vtkMatrix4x4()
-            matrix.Identity()  
-            matrix.SetElement(0, 3, -center[0])  
-            matrix.SetElement(1, 3, -center[1])  
-            matrix.SetElement(2, 3, -center[2])  
-
-            self.matrix = matrix
-
-            transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-            transform_node.SetMatrixTransformToParent(matrix)
-            model = self.surf
-
-            if self.camera :
-                model.SetAndObserveTransformNodeID(transform_node.GetID())
-                model.HardenTransform()
+                slicer.util.infoDisplay("Enter a path to a vtk file")
 
 
         else :
@@ -1042,36 +1070,40 @@ class WidgetParameter:
             
 
 
-
+    def checkSurfExist(self)->bool:
+        return not (self.surf==None)
 
     def processPatch(self)->None:
         '''
         Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
         '''
-        self._processed2 = False
-        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
-                        int(self.lineedit_teeth_left_top.text),
-                       int(self.lineedit_teeth_right_top.text),
-                       int(self.lineedit_teeth_left_bot.text),
-                       int(self.lineedit_teeth_right_bot.text),
-                       float(self.lineedit_ratio_left_top.text),
-                       float(self.lineedit_ratio_right_top.text),
-                       float(self.lineedit_ratio_left_bot.text),
-                       float(self.lineedit_ratio_right_bot.text),
-                       float(self.lineedit_adjust_left_top.text),
-                       float(self.lineedit_adjust_right_top.text),
-                       float(self.lineedit_adjust_left_bot.text),
-                       float(self.lineedit_adjust_right_bot.text),
-                       "None",
-                       "None",
-                       "butterfly",
-                       "None",
-                       "None",
-                       "None")
-        self.logic.process()
-        self.start_time = time.time()
-        self.timer.timeout.connect(self.onProcessUpdateButterfly)
-        self.timer.start(500)
+        if self.checkSurfExist() :
+            self._processed2 = False
+            self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                            int(self.lineedit_teeth_left_top.text),
+                        int(self.lineedit_teeth_right_top.text),
+                        int(self.lineedit_teeth_left_bot.text),
+                        int(self.lineedit_teeth_right_bot.text),
+                        float(self.lineedit_ratio_left_top.text),
+                        float(self.lineedit_ratio_right_top.text),
+                        float(self.lineedit_ratio_left_bot.text),
+                        float(self.lineedit_ratio_right_bot.text),
+                        float(self.lineedit_adjust_left_top.text),
+                        float(self.lineedit_adjust_right_top.text),
+                        float(self.lineedit_adjust_left_bot.text),
+                        float(self.lineedit_adjust_right_bot.text),
+                        "None",
+                        "None",
+                        "butterfly",
+                        "None",
+                        "None",
+                        "None")
+            self.logic.process()
+            self.start_time = time.time()
+            self.timer.timeout.connect(self.onProcessUpdateButterfly)
+            self.timer.start(500)
+        else :
+            slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
 
 
     def onProcessUpdateButterfly(self):
@@ -1224,53 +1256,57 @@ class WidgetParameter:
         '''
         launch the cli for the curve patch and lauch onProcessUpdateCurve
         '''
-        self._processed = False
-        
-        # Move the curve and the middle point where the original model is located
-        inverse_matrix = vtk.vtkMatrix4x4()
+        if self.checkSurfExist():
+            self._processed = False
+            
+            # Move the curve and the middle point where the original model is located
+            inverse_matrix = vtk.vtkMatrix4x4()
 
-        # Calculate invert matrix to reg curve and middle point with model not center in front of the camera
-        inverse_matrix.DeepCopy(self.getMatrix()) 
-        inverse_matrix.Invert()
+            # Calculate invert matrix to reg curve and middle point with model not center in front of the camera
+            inverse_matrix.DeepCopy(self.getMatrix()) 
+            inverse_matrix.Invert()
 
-        self.moveCurve(inverse_matrix)
-        self.camera=False
-        self.viewScan()
-        self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+            self.moveCurve(inverse_matrix)
+            self.camera=False
+            self.viewScan()
+            self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
-        middle_point_vector3D = self.middle_point.GetNthControlPointPositionWorld(0)
-        
-        # put the data in str type
-        vector_middle = ','.join([str(middle_point_vector3D.GetX()), str(middle_point_vector3D.GetY()), str(middle_point_vector3D.GetZ())])
-        list_curve = list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))
-        list_curve_str = ','.join(map(str, list_curve))   
-        vector_middle="["+vector_middle+"]"
+            middle_point_vector3D = self.middle_point.GetNthControlPointPositionWorld(0)
+            
+            # put the data in str type
+            vector_middle = ','.join([str(middle_point_vector3D.GetX()), str(middle_point_vector3D.GetY()), str(middle_point_vector3D.GetZ())])
+            list_curve = list(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData()))
+            list_curve_str = ','.join(map(str, list_curve))   
+            vector_middle="["+vector_middle+"]"
 
-        # CLI 
-        self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
-                        int(self.lineedit_teeth_left_top.text),
-                       int(self.lineedit_teeth_right_top.text),
-                       int(self.lineedit_teeth_left_bot.text),
-                       int(self.lineedit_teeth_right_bot.text),
-                       float(self.lineedit_ratio_left_top.text),
-                       float(self.lineedit_ratio_right_top.text),
-                       float(self.lineedit_ratio_left_bot.text),
-                       float(self.lineedit_ratio_right_bot.text),
-                       float(self.lineedit_adjust_left_top.text),
-                       float(self.lineedit_adjust_right_top.text),
-                       float(self.lineedit_adjust_left_bot.text),
-                       float(self.lineedit_adjust_right_bot.text),
-                       list_curve_str,
-                       vector_middle,
-                       "curve",
-                       "None",
-                       "None",
-                       "None")
-        self.logic.process()
+            # CLI 
+            self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
+                            int(self.lineedit_teeth_left_top.text),
+                        int(self.lineedit_teeth_right_top.text),
+                        int(self.lineedit_teeth_left_bot.text),
+                        int(self.lineedit_teeth_right_bot.text),
+                        float(self.lineedit_ratio_left_top.text),
+                        float(self.lineedit_ratio_right_top.text),
+                        float(self.lineedit_ratio_left_bot.text),
+                        float(self.lineedit_ratio_right_bot.text),
+                        float(self.lineedit_adjust_left_top.text),
+                        float(self.lineedit_adjust_right_top.text),
+                        float(self.lineedit_adjust_left_bot.text),
+                        float(self.lineedit_adjust_right_bot.text),
+                        list_curve_str,
+                        vector_middle,
+                        "curve",
+                        "None",
+                        "None",
+                        "None")
+            self.logic.process()
 
-        self.start_time = time.time()
-        self.timer.timeout.connect(self.onProcessUpdateCurve)
-        self.timer.start(500)
+            self.start_time = time.time()
+            self.timer.timeout.connect(self.onProcessUpdateCurve)
+            self.timer.start(500)
+
+        else :
+            slicer.util.infoDisplay(f"Load a vtk file in window number : {self.title} \nTo do this, enter the path to a vtk file and click on view.")
 
 
         
