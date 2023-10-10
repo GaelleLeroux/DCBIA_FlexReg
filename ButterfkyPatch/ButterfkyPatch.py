@@ -132,7 +132,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
-        self.reg = Reg()
+        self.reg = Reg() #Creation os an object reg for the registration
 
     def setup(self):
         """
@@ -179,7 +179,7 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.buttonSelectOutput.connect("clicked(bool)",partial(self.openFinder,"Output"))
         self.ui.applyButton.connect("clicked(bool)",self.on_apply_button_clicked)
 
-
+# Creation of the custom layout with 3 windows
         customLayout = """
 <layout type="horizontal">
   <item>
@@ -208,12 +208,18 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Switch to the new custom layout
         layoutManager.setLayout(customLayoutId)
 
-    def on_apply_button_clicked(self):
+    def on_apply_button_clicked(self)->None:
+        '''
+        Launch the registration
+        '''
         output_text = self.ui.lineEditOutput.text
         suffix_text = self.ui.lineEditSuffix.text
         self.reg.run(output_text, suffix_text)
 
-    def manageNumberWidgetScan(self,number):
+    def manageNumberWidgetScan(self,number)->None:
+        '''
+        Manage the number of widgets, all the widgets are the same and they're stock in list_widget_scan
+        '''
         # print(f'manage number widget scan, number : {number}')
         for i in  self.list_widget_scan:
             if i.getName()=="WidgetGo":
@@ -234,6 +240,9 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def removeWidgetScan(self):
+        '''
+        remove one widget of list_widget_scan
+        '''
         mainwidgetscan = self.list_widget_scan.pop(-1).getMainWidget()
         mainwidgetscan.deleteLater()
         mainwidgetscan = None
@@ -241,6 +250,9 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
 
     def addWidgetScan(self,title:int):
+        '''
+        add one widget of list_widget_scan
+        '''
         self.list_widget_scan.append(WidgetParameter(self.ui.verticalLayout_2,self.parent,title))
 
     def openFinder(self,nom : str,_) -> None : 
@@ -350,20 +362,6 @@ class ButterfkyPatchWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
 
-        # Update node selectors and sliders
-        # self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
-        # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-        # self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
-
-        # Update buttons states and tooltips
-        # if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-        #     self.ui.applyButton.toolTip = "Compute output volume"
-        #     self.ui.applyButton.enabled = True
-        # else:
-        #     self.ui.applyButton.toolTip = "Select input and output volume nodes"
-        #     self.ui.applyButton.enabled = False
-
-        # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
 
         
@@ -567,6 +565,7 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
         self.delayDisplay('Test passed')
 
+# Class that create a pop up which display the time since the begenning
 class TimerDialog(QDialog):
     def __init__(self, parent=None):
         super(TimerDialog, self).__init__(parent)
@@ -600,7 +599,7 @@ class TimerDialog(QDialog):
         self.closeButton.setEnabled(True)
 
 
-
+# Class doing the registration
 class Reg:
     def __init__(self,T1=None,T2=None) -> None:
         self.T1 = T1
@@ -612,28 +611,37 @@ class Reg:
         self.suffix=None
         self.timer = QTimer()
 
-    def onProcessUpdateICP(self):
+    def onProcessUpdateICP(self)->None:
+        '''
+        Called at the same time of the cli, update every 500ms to update the time since the begenning.
+        Launch the display of the registration after the end of the cli
+        '''
+        # To make sure you don't launch the display twice.
         if hasattr(self, "_processed") and self._processed:
             return
 
-        # Assuming you initiate the dialog when you start the process:
+        # Launch pop up with time
         if not hasattr(self, "timerDialog"):
             self.timerDialog = TimerDialog()
             self.timerDialog.show()
             self.timerDialog.startTimer()
 
+        # If end cli launch display and end timer
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             self._processed = True
-            print("FIN DE ICP")
             self.timer.stop()
             self.timerDialog.endTimer()
+            del self.timerDialog
             self.endProcess()
 
 
 
-    def endProcess(self):
+    def endProcess(self)->None:
+        '''
+        Display the registration in the third windows with 2 different color for T1 and T2
+        '''
         self.cleanView()
-        # Get data of model
+        # Load the result of the registration and T1 model
         outpath = self.T2.getPath().replace(os.path.dirname(self.T2.getPath()),self.output_folder)
         path_newT2 = outpath.split('.vtk')[0].split('vtp')[0]+self.suffix+'.vtk'
         self.surfT1 = slicer.util.loadModel(self.T1.getPath())
@@ -643,16 +651,19 @@ class Reg:
         displayNodeT1 = self.surfT1.GetDisplayNode()
         displayNodeT2 = self.surfT2.GetDisplayNode()
         
-        # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
+        # Get all vtkMRMLViewNodes of the scene
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None) # Désenregistrer pour éviter les fuites de mémoire
+        viewNodes.UnRegister(None) # De-register to avoid memory leaks
         
+        # Access to our custom layout
         customLayoutId=501
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId)
 
+        # Access layout 2
         viewNode = viewNodes.GetItemAsObject(2) if viewNodes.GetNumberOfItems() >= 2 else None
 
+        # Set colors of the model
         colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
         displayNodeT1.SetColor(colors[0])
         displayNodeT2.SetColor(colors[1])
@@ -665,7 +676,7 @@ class Reg:
         else:
             slicer.util.errorDisplay(f"There is 3D windows available with the index : {2}.")
 
-        # Get center of model
+        # T1 model was not modify during the register process. Get his matrix to center and apply to the oth
         matrix = self.T1.getMatrix()
 
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
@@ -678,34 +689,13 @@ class Reg:
         model.SetAndObserveTransformNodeID(transform_node.GetID())
         model.HardenTransform()
 
+  
 
 
-        # Move the curve and the middle point where the original model is located
-        inverse_matrix = vtk.vtkMatrix4x4()
-
-        # Calculate invert matrix to reg  curve and middle point with original T1
-        inverse_matrix.DeepCopy(self.T2.getMatrix()) 
-        inverse_matrix.Invert()
-
-        if self.T2.getCurve()!=None and self.T2.getMiddle()!=None :
-            self.T2.moveCurve(inverse_matrix)
-            self.T2.setCamera(True)
-            self.T2.viewScan()
-            self.T2.moveCurve(self.T2.getMatrix())
-            self.T2.displaySegmentation(self.T2.getSurf())
-
-        else :
-            self.T2.setCamera(True)
-            self.T2.viewScan()
-            self.T2.displaySegmentation(self.T2.getSurf())
-
-
-
-
-       
-
-
-    def cleanView(self):
+    def cleanView(self)->None:
+        '''
+        Delete all model load in windows 2
+        '''
         viewNode1 = slicer.mrmlScene.GetSingletonNode("3", "vtkMRMLViewNode")
         modelNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLModelNode")
         modelNodes.InitTraversal()
@@ -721,10 +711,13 @@ class Reg:
             slicer.mrmlScene.RemoveNode(model)
 
 
-    def run(self,output_folder:str,suffix:str):
+    def run(self,output_folder:str,suffix:str)->None:
+        '''
+        call the cli and launch onProcessUpdateICP
+        '''
         self.output_folder=output_folder
         self.suffix=suffix
-        self._processed = False
+        self._processed = False # To allow onProcessUpdateICP to display the time and launch endProcess
         # CLI 
         self.logic = ButterfkyPatchLogic(self.T2.getPath(),
                         int(0),
@@ -751,53 +744,22 @@ class Reg:
         self.timer.timeout.connect(self.onProcessUpdateICP)
         self.timer.start(500)
 
-     
-    def viewScan(self, surf,title: str):
-
-        # Récupérer tous les vtkMRMLViewNodes disponibles dans la scène
-        viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
-        viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
-        
-        if viewNodes.GetNumberOfItems() < 3:
-            slicer.util.errorDisplay(f"Il n'y a pas suffisamment de vues 3D disponibles pour afficher le modèle.")
-            return
-        
-        # Original Display Node
-        originalDisplayNode = surf.GetDisplayNode()
-        # originalDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(title - 1).GetID()])  # Afficher dans la vue title - 1
-        
-        # Créer une copie du modèle original pour la vue 2
-        # copied_model = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode')
-        # copied_model.SetAndObservePolyData(surf.GetPolyData())
-        # copied_model.SetName("T"+str(title) + "_copy")
-        
-        colors = [[255/256,51/256,153/256], [102/256,102/256,255/256]]
-        colorDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        colorDisplayNode.SetColor(colors[title-1])
-        colorDisplayNode.Visibility2DOff()
-        colorDisplayNode.Visibility3DOn()
-        slicer.mrmlScene.AddNode(colorDisplayNode)
-        # copied_model.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
-        surf.SetAndObserveDisplayNodeID(colorDisplayNode.GetID())
-        colorDisplayNode.SetViewNodeIDs([viewNodes.GetItemAsObject(2).GetID()])  # Afficher dans la vue 2
-
-
-        # # Center the model in front of the camera
-        # transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        # transform_node.SetMatrixTransformToParent(matrix)
-        # model = copied_model
-        # model.SetAndObserveTransformNodeID(transform_node.GetID())
-
     
-    def getName(self):
+    def getName(self)->str:
+        '''
+        Return the name of the class
+        '''
         return "Reg"
     
-    def setT1T2(self,T1,T2):
+    def setT1T2(self,T1,T2)->None:
+        '''
+        Set the widget using for T1 and T2
+        '''
         self.T1 = T1
         self.T2 = T2
 
 
-
+# Class with widget
 class WidgetParameter:
     def __init__(self,layout,parent,title) -> None:
         self.parent_layout = layout
@@ -817,6 +779,9 @@ class WidgetParameter:
         self.start_time = None
 
     def setup(self,layout,title):
+        '''
+        Create the widget with all the qt design and the connection of the button
+        '''
 
         self.layout_file = QHBoxLayout()
         layout.addLayout(self.layout_file)
@@ -922,14 +887,6 @@ class WidgetParameter:
         self.layout_button_display = QGridLayout()
         layout.addLayout(self.layout_button_display)
 
-        # self.button_view = QPushButton('View')
-        # self.button_view.pressed.connect(self.viewScan)
-        # self.layout_button_display.addWidget(self.button_view)
-
-        # self.button_update = QPushButton('Update')
-        # self.button_update.pressed.connect(self.processPatch)
-        # self.layout_button_display.addWidget(self.button_update)
-
         self.label_time = QLabel(f'time')
         self.layout_button_display.addWidget(self.label_time)
         self.label_time.setVisible(False)
@@ -999,6 +956,9 @@ class WidgetParameter:
 
 
     def viewScan(self):
+        '''
+        Display the scan in the correct window. If scan already loaded, delete it and display the new one
+        '''
         if self.surf == None :
             # Load model
             self.surf = slicer.util.loadModel(self.lineedit.text)
@@ -1060,18 +1020,11 @@ class WidgetParameter:
             transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
             transform_node.SetMatrixTransformToParent(matrix)
             model = self.surf
-            #for test
-            # self.camera=False
-            # matrix = vtk.vtkMatrix4x4()
-            # matrix.Identity()  
-            # self.matrix=matrix
-            #
+
             if self.camera :
                 model.SetAndObserveTransformNodeID(transform_node.GetID())
                 model.HardenTransform()
 
-            # if self.glue :
-            #     self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
         else :
             viewNode1 = slicer.mrmlScene.GetSingletonNode(str(self.title), "vtkMRMLViewNode")
@@ -1096,7 +1049,10 @@ class WidgetParameter:
 
 
 
-    def processPatch(self):
+    def processPatch(self)->None:
+        '''
+        Call the cli for the butterfly patch. Launch onProcessUpdateButterfly
+        '''
         self._processed2 = False
         self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                         int(self.lineedit_teeth_left_top.text),
@@ -1124,6 +1080,9 @@ class WidgetParameter:
 
 
     def onProcessUpdateButterfly(self):
+        '''
+        Update time since the beginning of the cli. When it's the end of the cli, display the patch
+        '''
         if hasattr(self, "_processed2") and self._processed2:
             return
         
@@ -1138,9 +1097,11 @@ class WidgetParameter:
             self.displaySegmentation(self.surf)
             
 
-    def loadLandamrk(self):
-        # node = slicer.util.loadMarkups('/home/luciacev/Desktop/Data/ButterflyPatch/F.mrk.json')
-        # node.SetCurveTypeToSpline()
+    def loadLandamrk(self)->None:
+        '''
+        Load the landmars creating the curve. Center it in the middle of the load model
+        '''
+        
         bounding_box = [0, 0, 0, 0, 0, 0]
         self.surf.GetRASBounds(bounding_box)
         center = [(bounding_box[1] + bounding_box[0]) / 2, (bounding_box[3] + bounding_box[2]) / 2, (bounding_box[5] + bounding_box[4]) / 2]
@@ -1151,17 +1112,16 @@ class WidgetParameter:
         self.curve.AddControlPoint([center[0]+10,center[1]+10,center[2]-5],f'F2')
         self.curve.AddControlPoint([center[0]-10,center[1]+10,center[2]-5],f'F3')
         self.curve.AddControlPoint([center[0]-10,center[1]-10,center[2]-5],f'F4')
-        # self.curve.AddControlPoint([0,10,0],'F1')
-        # self.curve.AddControlPoint([0,-10,0],'F2')
-        # self.curve.AddControlPoint([0,10,10],'F3')
-        # self.curve.AddControlPoint([0,10,-10],'F4')
+        
         self.viewLandmark()
         
 
 
-        # curve.SetAndObserveSurfaceConstrainNode(self.surf)
 
-    def viewLandmark(self):
+    def viewLandmark(self)->None:
+        '''
+        Display the landmarks
+        '''
         viewNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLViewNode')
         viewNodes.UnRegister(None)  # Désenregistrer pour éviter les fuites de mémoire
 
@@ -1174,50 +1134,43 @@ class WidgetParameter:
             displayNode.SetViewNodeIDs(view_ids_to_display)
 
 
-    def curvePoint(self):
+    def curvePoint(self)->None:
+        '''
+        Match the points with the load model 
+        '''
 
-
-        # surf = self.surf.GetPolyData()
-        # surf_normal = ComputeNormals(surf)
-        # points = surf.GetPoints()
-        # normal_point = surf_normal.GetPointData().GetArray('Normal')
-        # point_curve = self.curve.GetCurvePointsWorld() #return point on curve
-        # out_point = vtk.vtkPoints()
-        # out = self.curve.ConstrainPointsToSurface(points,normal_point,surf,out_point)
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
         self.glue=True
-        # print(f'out point {out_point}')
-        # print(f'out function {out}')
-
-        # markups_node = slicer.app.mrmlScene().AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        # for i , point in enumerate(vtk_to_numpy(self.curve.GetCurvePointsWorld().GetData())) :
-        #     markups_node.AddControlPoint(point,f'F{i}')
+        
 
         
 
-    def addPoints(self):
-        # Obtenez votre noeud de courbe
+    def addPoints(self)->None:
+        '''
+        Resample the curve with more control points.
+        '''
+        # Get your curve node
         curveNode = self.curve
         curvePolyData = curveNode.GetCurveWorld()
         points = curvePolyData.GetPoints()
 
-        # Créez des splines pour interpoler les points de la courbe
+        # Create splines to interpolate curve points
         splineX = vtk.vtkCardinalSpline()
         splineY = vtk.vtkCardinalSpline()
         splineZ = vtk.vtkCardinalSpline()
 
-        # Ajoutez les points de la courbe aux splines
+        # Add curve points to splines
         for i in range(points.GetNumberOfPoints()):
             p = points.GetPoint(i)
             splineX.AddPoint(i, p[0])
             splineY.AddPoint(i, p[1])
             splineZ.AddPoint(i, p[2])
 
-        # Déterminez le nombre de points souhaité
+        # Determine the desired number of points
         numberOfPoints = self.spin_add_points.value
         newCurveNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsClosedCurveNode',f'T{self.title} curve')
 
-        # Évaluez les splines à intervalles réguliers pour obtenir le nouveau set de points
+        # Evaluate the splines at regular intervals to obtain the new set of points
         for i in range(numberOfPoints):
             u = i / (numberOfPoints - 1.0) * (points.GetNumberOfPoints() - 1)
             if i == numberOfPoints-1:
@@ -1227,7 +1180,7 @@ class WidgetParameter:
             z = splineZ.Evaluate(u)
             newCurveNode.AddControlPoint(vtk.vtkVector3d(x, y, z))
 
-        # Si vous voulez, vous pouvez maintenant supprimer l'ancien noeud de courbe
+        # If you wish, you can now delete the old curve node
         self.curve = newCurveNode
         slicer.mrmlScene.RemoveNode(curveNode)
         self.viewLandmark()
@@ -1235,9 +1188,10 @@ class WidgetParameter:
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
 
-    def placeMiddlePoint(self):
-        # self.middle_point = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
-        # self.middle_point.AddControlPoint([0,0,0],'F1')
+    def placeMiddlePoint(self)->None:
+        '''
+        Place the middle point for the curve patch 
+        '''
 
         bounding_box = [0, 0, 0, 0, 0, 0]
         self.surf.GetRASBounds(bounding_box)
@@ -1258,7 +1212,10 @@ class WidgetParameter:
             displayNode.SetViewNodeIDs(view_ids_to_display)
 
 
-    def moveCurve(self,matrix):
+    def moveCurve(self,matrix)->None:
+        '''
+        apply the matrix to the landmarks
+        '''
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
         transform_node.SetMatrixTransformToParent(matrix)
 
@@ -1268,13 +1225,16 @@ class WidgetParameter:
         self.middle_point.HardenTransform() 
 
 
-    def draw(self):
+    def draw(self)->None:
+        '''
+        launch the cli for the curve patch and lauch onProcessUpdateCurve
+        '''
         self._processed = False
         
         # Move the curve and the middle point where the original model is located
         inverse_matrix = vtk.vtkMatrix4x4()
 
-        # Calculate invert matrix to reg  curve and middle point with original T1
+        # Calculate invert matrix to reg curve and middle point with model not center in front of the camera
         inverse_matrix.DeepCopy(self.getMatrix()) 
         inverse_matrix.Invert()
 
@@ -1321,7 +1281,10 @@ class WidgetParameter:
         
 
 
-    def onProcessUpdateCurve(self):
+    def onProcessUpdateCurve(self)->None:
+        ''''
+         Update time since the beginning of the cli. When it's the end of the cli, display the patch and move the curve at their original place
+        '''
     # If already processed, do nothing.
         if hasattr(self, "_processed") and self._processed:
             return
@@ -1346,7 +1309,10 @@ class WidgetParameter:
 
 
 
-    def displaySurf(self,surf):
+    def displaySurf(self,surf)->None:
+        '''
+        Display the model
+        '''
         mesh = slicer.app.mrmlScene().AddNewNodeByClass("vtkMRMLModelNode", 'First data')
         mesh.SetAndObservePolyData(surf)
         mesh.CreateDefaultDisplayNodes()
@@ -1354,7 +1320,10 @@ class WidgetParameter:
 
 
 
-    def displaySegmentation(self,model_node):
+    def displaySegmentation(self,model_node)->None:
+        '''
+        Display the patch
+        '''
         displayNode = model_node.GetModelDisplayNode()
         displayNode.SetScalarVisibility(False)
         disabledModify = displayNode.StartModify()
