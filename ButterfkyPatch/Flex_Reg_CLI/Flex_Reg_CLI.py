@@ -132,7 +132,12 @@ def main(args):
     if args.type!="icp":
         writer.SetFileName(args.lineedit)
     else:
-        writer.SetFileName("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/result.vtk")
+        outpath = args.lineedit.replace(os.path.dirname(args.lineedit),args.path_output)
+        if not os.path.exists(os.path.dirname(outpath)):
+            os.makedirs(os.path.dirname(outpath))
+
+        writer.SetFileName(outpath.split('.vtk')[0].split('vtp')[0]+args.suffix+'.vtk')
+
     writer.SetInputData(modelNode)
     writer.Write()
 
@@ -171,6 +176,8 @@ if __name__ == "__main__":
     parser.add_argument('type',type=str)
 
     parser.add_argument('path_reg',type=str)
+    parser.add_argument('path_output',type=str)
+    parser.add_argument('suffix',type=str)
     
     
 

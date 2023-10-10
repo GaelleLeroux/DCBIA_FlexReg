@@ -135,6 +135,20 @@
       <description>logPath (for the progress bar?)</description>
     </string>
 
+    <string>
+      <name>path_output</name>
+      <label>path_output</label>
+      <index>17</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
+    <string>
+      <name>suffix</name>
+      <label>suffix</label>
+      <index>18</index>
+      <description>logPath (for the progress bar?)</description>
+    </string>
+
 
 
 

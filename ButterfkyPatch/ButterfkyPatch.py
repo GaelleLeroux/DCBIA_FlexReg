@@ -24,7 +24,8 @@ from qt import (QGridLayout,
                 QFileDialog,
                 QSpinBox,
                 QWidget,
-                QTimer)
+                QTimer,
+                QDialog)
 
 
 import threading
@@ -416,7 +417,9 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
                  curve="",
                  middle_point="",
                  type=None,
-                 path_reg=""):
+                 path_reg="",
+                 path_output="",
+                 suffix=""):
         """
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
@@ -443,6 +446,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         self.type=type
 
         self.path_reg=path_reg
+        self.path_output=path_output
+        self.suffix=suffix
 
     def setDefaultParameters(self, parameterNode):
         """
@@ -484,6 +489,8 @@ class ButterfkyPatchLogic(ScriptedLoadableModuleLogic):
         parameters ["type"] = self.type
 
         parameters ["path_reg"] = self.path_reg
+        parameters["path_output"] = self.path_output
+        parameters["suffix"] = self.suffix
 
 
 
@@ -560,6 +567,38 @@ class ButterfkyPatchTest(ScriptedLoadableModuleTest):
 
         self.delayDisplay('Test passed')
 
+class TimerDialog(QDialog):
+    def __init__(self, parent=None):
+        super(TimerDialog, self).__init__(parent)
+        
+        self.setLayout(QVBoxLayout())
+        
+        self.timeLabel = QLabel("Starting timer...", self)
+        self.layout().addWidget(self.timeLabel)
+
+        self.closeButton = QPushButton("Close", self)
+        self.closeButton.setEnabled(False)  # Disable it initially
+        self.closeButton.clicked.connect(lambda _: self.accept())
+        self.layout().addWidget(self.closeButton)
+
+        self.start_time = None
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.updateTime)
+        
+    def startTimer(self):
+        self.start_time = time.time()
+        self.timer.start(1000)  # Update every second
+
+    def updateTime(self):
+        elapsed_time = time.time() - self.start_time
+        self.timeLabel.setText(f"Registration in process \n time : {round(float(elapsed_time), 2)}s")
+        
+    def endTimer(self):
+        elapsed_time = time.time() - self.start_time
+        self.timer.stop()
+        self.timeLabel.setText(f"End of the registration ! \n time : {round(float(elapsed_time), 2)}s")
+        self.closeButton.setEnabled(True)
+
 
 
 class Reg:
@@ -569,28 +608,36 @@ class Reg:
         self.surfT1=None
         self.surfT2=None
         self.start_time=0
+        self.output_folder=None
+        self.suffix=None
         self.timer = QTimer()
 
     def onProcessUpdateICP(self):
-        elapsed_time = time.time() - self.start_time
-        print(f"time : {round(float(elapsed_time),2)}s")
+        if hasattr(self, "_processed") and self._processed:
+            return
 
-        if elapsed_time >= 30:
-            self.timer.stop()
+        # Assuming you initiate the dialog when you start the process:
+        if not hasattr(self, "timerDialog"):
+            self.timerDialog = TimerDialog()
+            self.timerDialog.show()
+            self.timerDialog.startTimer()
 
-        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
-
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self._processed = True
             print("FIN DE ICP")
             self.timer.stop()
+            self.timerDialog.endTimer()
             self.endProcess()
+
 
 
     def endProcess(self):
         self.cleanView()
         # Get data of model
+        outpath = self.T2.getPath().replace(os.path.dirname(self.T2.getPath()),self.output_folder)
+        path_newT2 = outpath.split('.vtk')[0].split('vtp')[0]+self.suffix+'.vtk'
         self.surfT1 = slicer.util.loadModel(self.T1.getPath())
-        self.surfT2 = slicer.util.loadModel("/home/luciacev/Documents/Gaelle/Data/Flex_Reg/result.vtk")
-        points = self.surfT1.GetPolyData().GetPoints()
+        self.surfT2 = slicer.util.loadModel(path_newT2)
 
         # Get data model
         displayNodeT1 = self.surfT1.GetDisplayNode()
@@ -619,35 +666,6 @@ class Reg:
             slicer.util.errorDisplay(f"There is 3D windows available with the index : {2}.")
 
         # Get center of model
-        center = [0.0, 0.0, 0.0]
-        for i in range(points.GetNumberOfPoints()):
-            x, y, z = points.GetPoint(i)
-            center[0] += x
-            center[1] += y
-            center[2] += z
-
-        center[0] /= points.GetNumberOfPoints()
-        center[1] /= points.GetNumberOfPoints()
-        center[2] /= points.GetNumberOfPoints()
-
-
-        # Get the focal point of the camera
-        render_view = slicer.app.layoutManager().threeDWidget(0).threeDView()
-        camera = render_view.renderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
-        focal_point = camera.GetFocalPoint() 
-        center[0]-=focal_point[0]
-        center[1]-=focal_point[1]
-        center[2]-=focal_point[2]
-
-
-        # Create matrix to center the vtk
-        matrix = vtk.vtkMatrix4x4()
-        matrix.Identity()  
-        matrix.SetElement(0, 3, -center[0])  
-        matrix.SetElement(1, 3, -center[1])  
-        matrix.SetElement(2, 3, -center[2])  
-
-        self.matrix = matrix
         matrix = self.T1.getMatrix()
 
         transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
@@ -660,10 +678,31 @@ class Reg:
         model.SetAndObserveTransformNodeID(transform_node.GetID())
         model.HardenTransform()
 
-        # View scan
-        # self.cleanView()
-        # self.viewScan(self.surfT2,self.T2.getTitle())
-        # self.viewScan(self.surfT1,self.T1.getTitle())
+
+
+        # Move the curve and the middle point where the original model is located
+        inverse_matrix = vtk.vtkMatrix4x4()
+
+        # Calculate invert matrix to reg  curve and middle point with original T1
+        inverse_matrix.DeepCopy(self.T2.getMatrix()) 
+        inverse_matrix.Invert()
+
+        if self.T2.getCurve()!=None and self.T2.getMiddle()!=None :
+            self.T2.moveCurve(inverse_matrix)
+            self.T2.setCamera(True)
+            self.T2.viewScan()
+            self.T2.moveCurve(self.T2.getMatrix())
+            self.T2.displaySegmentation(self.T2.getSurf())
+
+        else :
+            self.T2.setCamera(True)
+            self.T2.viewScan()
+            self.T2.displaySegmentation(self.T2.getSurf())
+
+
+
+
+       
 
 
     def cleanView(self):
@@ -683,7 +722,9 @@ class Reg:
 
 
     def run(self,output_folder:str,suffix:str):
-
+        self.output_folder=output_folder
+        self.suffix=suffix
+        self._processed = False
         # CLI 
         self.logic = ButterfkyPatchLogic(self.T2.getPath(),
                         int(0),
@@ -701,7 +742,9 @@ class Reg:
                        "None",
                        "None",
                        "icp",
-                       self.T1.getPath())
+                       self.T1.getPath(),
+                       output_folder,
+                       suffix)
         self.logic.process()
 
         self.start_time = time.time()
@@ -918,6 +961,9 @@ class WidgetParameter:
     
     def getMatrix(self):
         return self.matrix
+    
+    def setCamera(self,b:bool):
+        self.camera=b
 
 
 
@@ -1024,8 +1070,8 @@ class WidgetParameter:
                 model.SetAndObserveTransformNodeID(transform_node.GetID())
                 model.HardenTransform()
 
-            if self.glue :
-                self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
+            # if self.glue :
+            #     self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
 
         else :
             viewNode1 = slicer.mrmlScene.GetSingletonNode(str(self.title), "vtkMRMLViewNode")
@@ -1051,7 +1097,7 @@ class WidgetParameter:
 
 
     def processPatch(self):
-        print("avant cli")
+        self._processed2 = False
         self.logic = ButterfkyPatchLogic(str(self.lineedit.text),
                         int(self.lineedit_teeth_left_top.text),
                        int(self.lineedit_teeth_right_top.text),
@@ -1068,6 +1114,8 @@ class WidgetParameter:
                        "None",
                        "None",
                        "butterfly",
+                       "None",
+                       "None",
                        "None")
         self.logic.process()
         self.start_time = time.time()
@@ -1076,14 +1124,19 @@ class WidgetParameter:
 
 
     def onProcessUpdateButterfly(self):
+        if hasattr(self, "_processed2") and self._processed2:
+            return
+        
         elapsed_time = time.time() - self.start_time
         self.label_time.setVisible(True)
         self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
         if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+            self._processed2 = True
+            self.timer.stop()
             self.viewScan()
             self.displaySegmentation(self.surf)
-            self.timer.stop()
+            
 
     def loadLandamrk(self):
         # node = slicer.util.loadMarkups('/home/luciacev/Desktop/Data/ButterflyPatch/F.mrk.json')
@@ -1205,7 +1258,18 @@ class WidgetParameter:
             displayNode.SetViewNodeIDs(view_ids_to_display)
 
 
+    def moveCurve(self,matrix):
+        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
+        transform_node.SetMatrixTransformToParent(matrix)
+
+        self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
+        self.curve.HardenTransform()
+        self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
+        self.middle_point.HardenTransform() 
+
+
     def draw(self):
+        self._processed = False
         
         # Move the curve and the middle point where the original model is located
         inverse_matrix = vtk.vtkMatrix4x4()
@@ -1214,14 +1278,7 @@ class WidgetParameter:
         inverse_matrix.DeepCopy(self.getMatrix()) 
         inverse_matrix.Invert()
 
-        transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-        transform_node.SetMatrixTransformToParent(inverse_matrix)
-
-        self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
-        self.curve.HardenTransform()
-        self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
-        self.middle_point.HardenTransform()
-
+        self.moveCurve(inverse_matrix)
         self.camera=False
         self.viewScan()
         self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
@@ -1251,6 +1308,8 @@ class WidgetParameter:
                        list_curve_str,
                        vector_middle,
                        "curve",
+                       "None",
+                       "None",
                        "None")
         self.logic.process()
 
@@ -1263,29 +1322,26 @@ class WidgetParameter:
 
 
     def onProcessUpdateCurve(self):
+    # If already processed, do nothing.
+        if hasattr(self, "_processed") and self._processed:
+            return
+
         elapsed_time = time.time() - self.start_time
         self.label_time.setVisible(True)
         self.label_time.setText(f"time : {round(float(elapsed_time),2)}s")
 
-        if elapsed_time >= 30:
-            self.timer.stop()
-
-        elif self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
+        if self.logic.cliNode.GetStatus() & self.logic.cliNode.Completed:
             #PLACE BACK THE CURVE AND THE MIDDLE POINT ON THE CENTER MODEL 
             self.camera=True
             self.viewScan()
-            transform_node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode')
-            transform_node.SetMatrixTransformToParent(self.matrix)
-
-            self.curve.SetAndObserveTransformNodeID(transform_node.GetID())
-            self.curve.HardenTransform()
-            self.middle_point.SetAndObserveTransformNodeID(transform_node.GetID())
-            self.middle_point.HardenTransform()
-
+            self.moveCurve(self.matrix)
             # Load the new model and display the patch 
             self.curve.SetAndObserveSurfaceConstraintNode(self.surf)
             self.displaySegmentation(self.surf)
+            self._processed = True  # set the flag to prevent reprocessing
             self.timer.stop()
+        
+            
 
 
 
